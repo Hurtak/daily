@@ -10,6 +10,7 @@ function mount(workout: Workout = workouts[0]) {
     visible: true,
     onBack: vi.fn(),
     onFocusChange: vi.fn(),
+    onComplete: vi.fn(),
   };
   return { ...render(<WorkoutPlayer {...props} />), props };
 }
@@ -26,13 +27,20 @@ function advanceTo(name: string) {
   throw new Error(`Did not reach ${name}`);
 }
 
-test.each(workouts)("previews every exercise and its form notes for $name", (workout) => {
+test.each(workouts)("previews every exercise, its target muscles, and form notes for $name", (workout) => {
   mount(workout);
   expect(screen.getByRole("heading", { name: `${workout.name}.` })).toBeTruthy();
   for (const exercise of workout.exercises) {
-    click(new RegExp(exercise.name));
+    const button = screen.getByRole("button", { name: new RegExp(exercise.name) });
+    for (const muscle of exercise.muscles) {
+      expect(button.textContent).toContain(muscle);
+    }
+    fireEvent.click(button);
     const dialog = screen.getByRole("dialog", { name: exercise.name });
     expect(dialog.textContent).toContain(exercise.detail);
+    for (const muscle of exercise.muscles) {
+      expect(dialog.textContent).toContain(muscle);
+    }
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
   }
   click("Workout notes");
@@ -137,6 +145,7 @@ test.each(workouts)("$name finishes with the actual time and its correct set cou
   expect(screen.getByText(workout.id === "a" ? "14" : "20", { exact: true })).toBeTruthy();
   expect(screen.getByText("3 + 2", { exact: true })).toBeTruthy();
   expect(screen.getByText("00:01", { exact: true })).toBeTruthy();
+  expect(props.onComplete).toHaveBeenCalledOnce();
   click("Continue");
   expect(props.onBack).toHaveBeenCalledOnce();
   expect(screen.getByRole("button", { name: "Start workout" })).toBeTruthy();

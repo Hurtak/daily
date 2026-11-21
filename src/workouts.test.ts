@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { buildSteps, warmupAt, warmupFor, workouts } from "./workouts";
 
-test("the revised plans prioritize push-ups / abs and biceps, with no deadlifts", () => {
+test("the revised plans prioritize push-ups / abs and biceps, with target muscles and no deadlifts", () => {
   expect(workouts[0].exercises.map(({ movement, reps }) => [movement, reps])).toEqual([
     ["pushup", "8–20 reps"],
     ["crunch", "10–20 reps"],
@@ -15,6 +15,11 @@ test("the revised plans prioritize push-ups / abs and biceps, with no deadlifts"
     ["bridge", "10–15 reps"],
   ]);
   expect(workouts[1].exercises[1].seconds).toBe(30);
+  for (const workout of workouts) {
+    for (const exercise of workout.exercises) {
+      expect(exercise.muscles.length).toBeGreaterThanOrEqual(2);
+    }
+  }
 });
 
 test.each(workouts)("$name finishes all three priority rounds before the two secondary rounds", (workout) => {

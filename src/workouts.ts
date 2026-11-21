@@ -16,6 +16,7 @@ export interface Exercise {
   name: string;
   reps: string;
   movement: Movement;
+  muscles: readonly string[];
   cue: string;
   detail: string;
   sides?: "arm" | "leg" | "side";
@@ -48,6 +49,7 @@ export const workouts: Workout[] = [
         name: "Push-ups",
         reps: "8–20 reps",
         movement: "pushup",
+        muscles: ["Chest", "Triceps", "Front shoulders"],
         cue: "Lower as one unit. Press the floor away.",
         detail:
           "Choose a version that makes the last repetitions challenging. Keep your body in one line and your elbows angled back. If standard push-ups are too easy, elevate your feet on a low, stable surface.",
@@ -56,6 +58,7 @@ export const workouts: Workout[] = [
         name: "Reverse crunches",
         reps: "10–20 reps",
         movement: "crunch",
+        muscles: ["Lower abs", "Core"],
         cue: "Curl your pelvis up. Lower without swinging your knees.",
         detail:
           "Keep your head and shoulders on the mat and your knees bent. Curl your pelvis slightly off the floor, rather than just swinging your knees. Progress by reducing momentum and lengthening your legs slightly.",
@@ -64,6 +67,7 @@ export const workouts: Workout[] = [
         name: "Kettlebell reverse lunges",
         reps: "8–12 reps",
         movement: "lunge",
+        muscles: ["Quads", "Glutes", "Hamstrings"],
         sides: "leg",
         cue: "Keep the working foot planted. Step back with the other leg.",
         detail:
@@ -73,6 +77,7 @@ export const workouts: Workout[] = [
         name: "One-arm overhead press",
         reps: "6–12 reps",
         movement: "press",
+        muscles: ["Shoulders", "Triceps", "Core"],
         sides: "arm",
         cue: "Keep your ribs down. Press without leaning backward.",
         detail:
@@ -93,6 +98,7 @@ export const workouts: Workout[] = [
         name: "Kettlebell biceps curl",
         reps: "6–15 reps",
         movement: "curl",
+        muscles: ["Biceps", "Forearms"],
         sides: "arm",
         cue: "Keep your torso still and your elbow by your side.",
         detail:
@@ -102,6 +108,7 @@ export const workouts: Workout[] = [
         name: "Side plank",
         reps: "20–40 sec",
         movement: "plank",
+        muscles: ["Obliques", "Core", "Glute medius"],
         seconds: 30,
         sides: "side",
         cue: "Elbow below shoulder. End the hold before your hips sag or rotate.",
@@ -112,6 +119,7 @@ export const workouts: Workout[] = [
         name: "Supported one-arm row",
         reps: "10–20 reps",
         movement: "row",
+        muscles: ["Lats", "Upper back", "Biceps"],
         sides: "arm",
         cue: "Brace your free hand. Pull your elbow toward your hip.",
         detail:
@@ -121,6 +129,7 @@ export const workouts: Workout[] = [
         name: "Single-leg glute bridge",
         reps: "10–15 reps",
         movement: "bridge",
+        muscles: ["Glutes", "Hamstrings", "Core"],
         sides: "leg",
         cue: "Press through your planted foot. Lift your hips with a level pelvis.",
         detail:
@@ -139,6 +148,7 @@ export function warmupFor(workout: Workout): WarmupExercise[] {
       reps: "45 sec",
       seconds: 45,
       movement: "march",
+      muscles: ["Full body", "Hip flexors"],
       cue: "Stand tall. Alternate your knees and pump the opposite arm.",
       detail: "",
     },
@@ -147,6 +157,7 @@ export function warmupFor(workout: Workout): WarmupExercise[] {
       reps: "30 sec",
       seconds: 30,
       movement: "squat",
+      muscles: ["Quads", "Glutes"],
       cue: "Sit your hips back. Keep your heels grounded.",
       detail: "",
     },
@@ -155,6 +166,7 @@ export function warmupFor(workout: Workout): WarmupExercise[] {
       reps: "45 sec · both directions",
       seconds: 45,
       movement: "circles",
+      muscles: ["Shoulders", "Upper back"],
       cue: "Keep your elbows straight. Circle from your shoulders in both directions.",
       detail: "",
     },

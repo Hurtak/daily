@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MovementDiagram from "./MovementDiagram";
 import Icon from "./Icon";
 import InfoDialog from "./InfoDialog";
@@ -12,15 +12,17 @@ interface Props {
   visible: boolean;
   onBack: () => void;
   onFocusChange: (focused: boolean) => void;
+  onComplete?: () => void;
 }
 type Info = "plan" | "warmup" | "form" | "restart" | Exercise;
 
-export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange }: Props) {
+export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange, onComplete }: Props) {
   const steps = useMemo(() => buildSteps(workout), [workout]);
   const warmup = useMemo(() => warmupFor(workout), [workout]);
   const timer = useWorkoutTimer(steps);
   const { state, step, remaining, pause } = timer;
   const [info, setInfo] = useState<Info | null>(null);
+  const completedReportedRef = useRef(false);
   const ready = state.status === "ready";
   const complete = state.status === "complete";
   const paused = state.status === "paused";
@@ -43,6 +45,14 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange 
   useEffect(() => {
     if (visible) onFocusChange(!ready);
   }, [visible, ready, onFocusChange]);
+  useEffect(() => {
+    if (complete && !completedReportedRef.current) {
+      completedReportedRef.current = true;
+      onComplete?.();
+    } else if (ready) {
+      completedReportedRef.current = false;
+    }
+  }, [complete, ready, onComplete]);
   useEffect(() => {
     if (!visible) return;
     document.title = active
@@ -106,10 +116,24 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange 
           </ul>
         </>
       ) : info === "form" ? (
-        <p>
-          {step.exercise?.detail ??
-            "Set your kettlebell nearby and find a little space. Keep this tab open and your device awake for countdown sounds."}
-        </p>
+        <>
+          {step.exercise && (
+            <div className="dialog-muscles" aria-label="Target muscles">
+              <span className="muscle-prefix">Targets</span>
+              <span className="muscle-tags">
+                {step.exercise.muscles.map((muscle) => (
+                  <span className="muscle-tag" key={muscle}>
+                    {muscle}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+          <p>
+            {step.exercise?.detail ??
+              "Set your kettlebell nearby and find a little space. Keep this tab open and your device awake for countdown sounds."}
+          </p>
+        </>
       ) : info === "plan" ? (
         <>
           <p>{workout.description}</p>
@@ -134,6 +158,16 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange 
       ) : (
         <>
           <MovementDiagram movement={info.movement} />
+          <div className="dialog-muscles" aria-label="Target muscles">
+            <span className="muscle-prefix">Targets</span>
+            <span className="muscle-tags">
+              {info.muscles.map((muscle) => (
+                <span className="muscle-tag" key={muscle}>
+                  {muscle}
+                </span>
+              ))}
+            </span>
+          </div>
           <p>{info.cue}</p>
           <p>{info.detail}</p>
         </>
@@ -203,6 +237,13 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange 
                       {exercise.reps}
                       {exercise.sides ? ` per ${exercise.sides}` : ""}
                     </small>
+                    <span className="muscle-tags" aria-label={`Targets ${exercise.muscles.join(", ")}`}>
+                      {exercise.muscles.map((muscle) => (
+                        <span className="muscle-tag" key={muscle}>
+                          {muscle}
+                        </span>
+                      ))}
+                    </span>
                   </span>
                   <Icon name="arrow" size={17} />
                 </button>
@@ -303,6 +344,15 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange 
                       ? "Breathe. Relax your shoulders."
                       : "We’ll start with a 3-minute warm-up")}
               </p>
+              {step.exercise && (
+                <div className="focus-muscles" aria-label={`Targets ${step.exercise.muscles.join(", ")}`}>
+                  {step.exercise.muscles.map((muscle) => (
+                    <span className="muscle-tag" key={muscle}>
+                      {muscle}
+                    </span>
+                  ))}
+                </div>
+              )}
             </header>
             <div className="movement-stage">
               <div className={`movement-ring ${remaining !== undefined && remaining <= 3 ? "last-seconds" : ""}`}>

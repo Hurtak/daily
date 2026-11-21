@@ -13,7 +13,11 @@ export type IconName =
   | "check"
   | "leaf"
   | "sun"
-  | "skip";
+  | "skip"
+  | "settings"
+  | "chevronLeft"
+  | "chevronRight"
+  | "swap";
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <path d="m3 10 9-7 9 7v10h-6v-6H9v6H3z" />,
@@ -74,6 +78,16 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="m5 6 10 6-10 6zM19 6v12" />
     </>
   ),
+  settings: (
+    <>
+      <path d="M4 7h10m4 0h2M4 17h4m4 0h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </>
+  ),
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
+  chevronRight: <path d="m9 6 6 6-6 6" />,
+  swap: <path d="M7 7h11m-3-3 3 3-3 3M17 17H6m3-3-3 3 3 3" />,
 };
 
 export default function Icon({ name, size = 20 }: { name: IconName; size?: number }) {

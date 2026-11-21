@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { loadSoundEnabled, saveSoundEnabled } from "./storage";
 import { advanceTimer, initialTimer, remainingSeconds, tickTimer } from "./timer";
 import type { TimerState } from "./timer";
 import type { Step } from "./workouts";
 
 export function useWorkoutTimer(steps: Step[]) {
   const [state, setState] = useState<TimerState>(initialTimer);
-  const [sound, setSound] = useState(true);
+  const [sound, setSound] = useState<boolean>(loadSoundEnabled);
   const [audioUnavailable, setAudioUnavailable] = useState(false);
   const audio = useRef<AudioContext | null>(null);
   const lastCue = useRef("");
@@ -133,7 +134,11 @@ export function useWorkoutTimer(steps: Step[]) {
     },
     toggleSound: () => {
       if (!sound) enableAudio();
-      setSound((previous) => !previous);
+      setSound((previous) => {
+        const next = !previous;
+        saveSoundEnabled(next);
+        return next;
+      });
     },
   };
 }

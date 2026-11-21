@@ -38,6 +38,7 @@ class MockAudioContext {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
   audioMock.tones = [];
   audioMock.resume.mockReset().mockResolvedValue(undefined);
