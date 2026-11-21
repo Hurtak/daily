@@ -584,6 +584,8 @@
     background: transparent;
   }
   .preview-pair {
+    grid-template-rows: auto;
+    align-content: start;
     padding-inline: 0;
     border: 0;
     border-radius: 0;
@@ -595,29 +597,41 @@
 }
 @media (width <= 720px) {
   .workout-preview {
+    grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
-      "heading notes"
-      "start start"
+      "heading heading"
+      "notes start"
       "session session";
-    grid-template-rows: auto auto minmax(0, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
   .preview-heading h1 {
-    font-size: 28px;
-    margin-block: 5px;
+    font-size: clamp(24px, 6.8vw, 28px);
+    margin-block: 0 4px;
+  }
+  .preview-facts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .kettlebell-toggle {
+    padding-inline: 10px;
+  }
+  .kettlebell-toggle svg {
+    display: none;
   }
   .preview-actions {
     display: contents;
   }
   .preview-help {
     grid-area: notes;
+    min-block-size: 44px;
+    min-inline-size: 44px;
   }
   .preview-start {
     grid-area: start;
     inline-size: 100%;
   }
   .preview-exercises {
-    align-self: stretch;
     padding: 14px;
   }
   .preview-exercises h2 {
@@ -649,7 +663,7 @@
     font-size: 13px;
   }
 }
-@media (height <= 650px), (width <= 720px) and (height <= 800px) {
+@media (height <= 650px), (width <= 720px) and (height <= 830px) {
   .preview-exercise {
     padding-block: 4px;
   }
@@ -662,6 +676,18 @@
   .preview-exercise .muscle-tags {
     flex-basis: 100%;
     margin-block-start: 0;
+  }
+}
+@media (width <= 720px) and (height <= 830px) {
+  .preview-exercise {
+    gap: 8px;
+  }
+  .preview-exercise-copy {
+    flex: 1;
+    gap: 3px 6px;
+  }
+  .preview-exercise .muscle-tags {
+    flex-basis: auto;
   }
 }
 @media (height <= 650px) {
@@ -692,21 +718,32 @@
   }
 }
 @media (height <= 650px) and (width <= 600px) {
+  .app-shell > main:has(> .workout-preview) {
+    padding-block: 8px;
+  }
   .workout-preview {
     gap: 8px;
   }
-  .preview-heading h1 {
-    font-size: 26px;
-  }
   .preview-exercises {
-    padding: 8px 12px;
+    padding: 8px;
+    gap: 4px;
   }
   .preview-exercises h2 {
     display: none;
   }
+  .preview-exercise {
+    gap: 6px;
+    padding-block: 3px;
+  }
+  .preview-exercise .muscle-tag {
+    padding-inline: 5px;
+  }
   .exercise-thumbnail {
-    inline-size: 32px;
-    block-size: 32px;
+    inline-size: 28px;
+    block-size: 28px;
+  }
+  .pair-label {
+    padding-block: 4px 1px;
   }
   .pair-label,
   .pair-label > span {
@@ -717,6 +754,10 @@
   }
   .primary-button {
     min-block-size: 48px;
+  }
+  .preview-start {
+    min-block-size: 44px;
+    padding-block: 8px;
   }
   .pause-button {
     inline-size: 48px;
@@ -775,8 +816,8 @@
 }
 @media (height <= 500px) and (width > 600px) {
   .workout-preview {
-    gap: 8px 20px;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 8px 14px;
+    grid-template-columns: minmax(180px, 3fr) minmax(0, 7fr);
     grid-template-areas:
       "heading session"
       "actions session";
@@ -786,28 +827,61 @@
   .preview-heading h1 {
     font-size: 26px;
   }
+  .preview-facts {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
   .preview-actions {
     display: flex;
+    gap: 4px;
   }
   .preview-start {
     flex: 1;
-    padding-inline: 12px;
+    gap: 6px;
+    padding-inline: 8px;
+  }
+  .preview-start > svg {
+    inline-size: 16px;
   }
   .preview-exercises {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
     padding: 8px 12px;
   }
   .preview-exercises h2 {
     display: none;
   }
+  .preview-warmup {
+    grid-column: 1 / -1;
+  }
   .preview-exercise {
-    padding-block: 2px;
-    gap: 8px;
+    padding-block: 3px;
+    gap: 6px;
+  }
+  .preview-exercise > svg {
+    inline-size: 14px;
+    flex-shrink: 0;
+  }
+  .preview-exercise-copy {
+    flex: 1;
+    gap: 3px 6px;
   }
   .preview-exercise strong {
     font-size: 13px;
   }
   .preview-exercise small {
     font-size: 12px;
+  }
+  .preview-exercise .muscle-tags {
+    flex-basis: auto;
+  }
+  .preview-exercise .muscle-tag {
+    padding-inline: 5px;
+  }
+  .preview-pair .exercise-thumbnail {
+    display: none;
   }
   .exercise-thumbnail {
     inline-size: 36px;

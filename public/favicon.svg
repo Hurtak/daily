@@ -1,1 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#f3f4f1"/><path d="M11 20h18M14 13v14m12-14v14M10 16v8m20-8v8" stroke="#1f201d" stroke-width="3" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <title>Bold D</title>
+  <rect width="48" height="48" rx="9" fill="#1f4e46"/>
+  <path fill="#fffdf9" fill-rule="evenodd" d="M11.5 10H23c9.5 0 15.5 5.8 15.5 14s-6 14-15.5 14H11.5zm7 6.3v15.4H23c5.4 0 8.5-3 8.5-7.7s-3.1-7.7-8.5-7.7Z"/>
+</svg>
