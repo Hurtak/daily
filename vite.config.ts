@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  base: "/health-dashboard/",
+  base: "/daily/",
   plugins: [react()],
   test: { environment: "jsdom", setupFiles: ["./src/test/setup.ts"] },
   lint: {

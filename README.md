@@ -2,7 +2,7 @@
 
 A workout and food dashboard built with React, TypeScript, Vite+, and plain CSS. Settings and workout logs live in the browser.
 
-[Open the live app](https://hurtak.github.io/health-dashboard/)
+[Open the live app](https://hurtak.github.io/daily/)
 
 ```sh
 npm install
@@ -28,7 +28,7 @@ Development, tests, formatting, linting, type checking, builds, and previews sha
 
 GitHub Actions runs the **Main workflow** on every push and pull request. Its `validate` job uses Node 24, installs the lockfile with `npm ci`, and runs the same `npm run validate` command as local development. These npm scripts resolve the pinned project-local Vite+ executable automatically.
 
-After validation passes, pushes to `main` run the `deploy` job: build the production app and publish `dist/` to [GitHub Pages](https://hurtak.github.io/health-dashboard/). Pull requests and other branches only validate. GitHub Pages uses the GitHub Actions publishing source. Vite’s base path is `/health-dashboard/`, matching the repository URL.
+After validation passes, pushes to `main` run the `deploy` job: build the production app and publish `dist/` to [GitHub Pages](https://hurtak.github.io/daily/). Pull requests and other branches only validate. GitHub Pages uses the GitHub Actions publishing source. Vite’s base path is `/daily/`, matching the repository URL.
 
 Tests cover both workout sequences, every screen, exercise guides, native dialogs, auto-paced rep timers and pace switching, pause/resume, restart confirmation, navigation with preserved sessions, side-plank holds, rep/countdown/transition audio cues, mute, unavailable audio, and wake-lock cleanup. There is no end-to-end test suite or browser test dependency.
 
