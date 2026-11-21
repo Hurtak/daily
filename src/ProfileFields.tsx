@@ -1,25 +1,34 @@
 import { useId, useState } from "react";
-import { clampHeight, clampWeight } from "./storage";
-import type { NutritionGoal, UserProfile } from "./storage";
+import { clampHeight, clampWeight, WEEKDAYS } from "./storage";
+import type { NutritionGoal, UserProfile, WorkoutDay } from "./storage";
 import { goalLabels } from "./nutrition";
 
 interface Props {
   profile: UserProfile;
   onChange: (next: UserProfile) => void;
+  includeBreakfast?: boolean;
+  onBreakfastChange?: (enabled: boolean) => void;
   compact?: boolean;
 }
 
 const GOALS: readonly NutritionGoal[] = ["cut", "maintain", "build"];
-const WEEKLY_COUNTS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
-export default function ProfileFields({ profile, onChange, compact = false }: Props) {
+export default function ProfileFields({
+  profile,
+  onChange,
+  includeBreakfast = false,
+  onBreakfastChange = () => {},
+  compact = false,
+}: Props) {
   const weightId = useId();
   const heightId = useId();
+  const breakfastId = useId();
   const [weightDraft, setWeightDraft] = useState<string | null>(null);
   const [heightDraft, setHeightDraft] = useState<string | null>(null);
 
   const weightValue = weightDraft ?? String(profile.weightKg);
   const heightValue = heightDraft ?? String(profile.heightCm);
+  const { workoutDays } = profile;
 
   function handleWeightChange(raw: string) {
     setWeightDraft(raw);
@@ -53,6 +62,13 @@ export default function ProfileFields({ profile, onChange, compact = false }: Pr
       onChange({ ...profile, heightCm: nextHeight });
       setHeightDraft(null);
     }
+  }
+
+  function toggleWorkoutDay(day: WorkoutDay) {
+    const selected = workoutDays.includes(day);
+    if (selected && workoutDays.length === 1) return;
+    const next = selected ? workoutDays.filter((value) => value !== day) : [...workoutDays, day].sort((a, b) => a - b);
+    onChange({ ...profile, workoutDays: next });
   }
 
   return (
@@ -98,26 +114,30 @@ export default function ProfileFields({ profile, onChange, compact = false }: Pr
         </div>
       </div>
 
-      <div className="setting-group" role="group" aria-label="Workouts per week">
+      <div className="setting-group" role="group" aria-label="Workout days">
         <div className="setting-group-head">
-          <span className="setting-label">Workouts / week</span>
+          <span className="setting-label">Workout days</span>
           <span className="setting-meta">
-            {profile.workoutsPerWeek === 0 ? "Rest week" : `${profile.workoutsPerWeek} / wk`}
+            {workoutDays.length} / wk{workoutDays.length === 1 && " · minimum"}
           </span>
         </div>
-        <div className="ed-freq-row">
-          {WEEKLY_COUNTS.map((count) => (
-            <button
-              key={count}
-              type="button"
-              className={`ed-freq-chip ${profile.workoutsPerWeek === count ? "is-selected" : ""}`}
-              aria-pressed={profile.workoutsPerWeek === count}
-              aria-label={`${count} ${count === 1 ? "workout" : "workouts"} per week`}
-              onClick={() => onChange({ ...profile, workoutsPerWeek: count })}
-            >
-              {count}
-            </button>
-          ))}
+        <div className="ed-weekdays">
+          {WEEKDAYS.map(({ day, short, name }) => {
+            const selected = workoutDays.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                className="ed-weekday"
+                aria-pressed={selected}
+                aria-label={name}
+                disabled={selected && workoutDays.length === 1}
+                onClick={() => toggleWorkoutDay(day)}
+              >
+                {short}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -140,6 +160,21 @@ export default function ProfileFields({ profile, onChange, compact = false }: Pr
         </div>
         {!compact && <p className="goal-hint">{goalLabels[profile.goal].description}</p>}
       </div>
+
+      <label className={`ed-checkbox-box ${includeBreakfast ? "is-checked" : ""}`} htmlFor={breakfastId}>
+        <span className="ed-checkbox-main">
+          <input
+            id={breakfastId}
+            type="checkbox"
+            checked={includeBreakfast}
+            onChange={(event) => onBreakfastChange(event.target.checked)}
+          />
+          <span>Eat breakfast</span>
+        </span>
+        <span className="setting-meta" aria-hidden="true">
+          4 eggs · ~25 g
+        </span>
+      </label>
     </div>
   );
 }

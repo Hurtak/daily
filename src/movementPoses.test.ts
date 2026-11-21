@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { anatomy, distance, ground, motionPosesFor, poseFor } from "./movementPoses";
+import { anatomy, distance, ground, motionPhaseFor, motionPosesFor, movementDurations, poseFor } from "./movementPoses";
 import type { Limb, Phase, Point } from "./movementPoses";
 import type { Movement } from "./workouts";
 
@@ -8,12 +8,16 @@ const movements: Exclude<Movement, "rest">[] = [
   "march",
   "circles",
   "pushup",
+  "pike-pushup",
   "lunge",
+  "goblet-lunge",
   "press",
   "crunch",
   "row",
+  "prone-w",
   "bridge",
   "curl",
+  "self-resisted-curl",
   "plank",
 ];
 const phases: Phase[] = [0, 1, 2];
@@ -65,16 +69,17 @@ test.each(movements)("%s has a closed, continuous cycle with no jumps between sa
 });
 
 test("floor and bench supports remain planted throughout the continuous motion", () => {
-  for (const movement of ["pushup", "lunge", "row", "bridge", "squat"] as const) {
+  for (const movement of ["pushup", "pike-pushup", "lunge", "goblet-lunge", "row", "bridge", "squat"] as const) {
     const poses = motionPosesFor(movement);
     const start = poses[0];
     for (const pose of poses) {
-      if (movement === "pushup") {
+      if (movement === "pushup" || movement === "pike-pushup") {
         expect(pose.toes).toEqual(start.toes);
         expect(pose.arms.map((arm) => arm[2])).toEqual(start.arms.map((arm) => arm[2]));
       }
       if (movement === "squat" || movement === "row") expect(pose.toes).toEqual(start.toes);
-      if (movement === "lunge" || movement === "bridge") expect(pose.toes[1]).toEqual(start.toes[1]);
+      if (movement === "lunge" || movement === "goblet-lunge" || movement === "bridge")
+        expect(pose.toes[1]).toEqual(start.toes[1]);
       if (movement === "row") expect(pose.arms[0][2]).toEqual(start.arms[0][2]);
       if (movement === "bridge") {
         expect(pose.head).toEqual(start.head);
@@ -109,8 +114,40 @@ test("reverse lunges return to standing while the working foot stays planted", (
   expect(bottom.legs[0][2][1]).toBeLessThan(start.legs[0][2][1]); // rear heel rises
   expect(angle(bottom.legs[1])).toBeGreaterThan(75);
   expect(angle(bottom.legs[1])).toBeLessThan(105);
-  for (const hand of bottom.arms.map((limb) => limb[2]))
-    expect(distance(hand, bottom.bell!.grip)).toBeLessThanOrEqual(5);
+  expect(bottom.bell).toBeUndefined();
+  const loaded = poseFor("goblet-lunge", 2);
+  expect(loaded.legs).toEqual(bottom.legs);
+  for (const hand of loaded.arms.map((limb) => limb[2]))
+    expect(distance(hand, loaded.bell!.grip)).toBeLessThanOrEqual(5);
+});
+
+test("pike push-ups keep the hips above the shoulders while the head lowers", () => {
+  const start = poseFor("pike-pushup", 0);
+  const bottom = poseFor("pike-pushup", 2);
+  expect(bottom.spine[2][1]).toBeLessThan(bottom.spine[0][1]);
+  expect(bottom.head[1]).toBeGreaterThan(start.head[1] + 15);
+  expect(angle(bottom.arms[1])).toBeLessThan(angle(start.arms[1]));
+});
+
+test("bodyweight curl maintains hand contact on the working forearm", () => {
+  for (const pose of motionPosesFor("self-resisted-curl")) {
+    const [, elbow, wrist] = pose.arms[1];
+    expect(distance(elbow, pose.arms[0][2])).toBeCloseTo(anatomy.forearm * (2 / 3));
+    expect(distance(pose.arms[0][2], wrist)).toBeCloseTo(anatomy.forearm / 3);
+    expect(pose.bell).toBeUndefined();
+  }
+});
+
+test("prone W moves both arms symmetrically over a stationary body", () => {
+  const start = poseFor("prone-w", 0);
+  const peak = poseFor("prone-w", 2);
+  expect(peak.support).toBe("overhead-mat");
+  expect(peak.spine).toEqual(start.spine);
+  expect(peak.legs).toEqual(start.legs);
+  for (const [index, [, elbow, wrist]] of peak.arms.entries()) {
+    expect(wrist[1]).toBeLessThan(elbow[1]);
+    expect(elbow[1]).toBeLessThan(start.arms[index][1][1]);
+  }
 });
 
 test("marching alternates the raised knee while the other foot supports an upright torso", () => {
@@ -239,4 +276,61 @@ test("arm circles rotate straight arms around fixed shoulders without moving the
   }
   const hands = phases.map((phase) => poseFor("circles", phase).arms[1][2]);
   expect(Math.abs(parallel(hands[0], hands[1], hands[1], hands[2]))).toBeGreaterThan(1000);
+});
+
+test("supine exercises orient the mirrored profile head upward with hair resting on the mat", () => {
+  for (const movement of ["crunch", "bridge"] as const) {
+    for (const phase of phases) {
+      const pose = poseFor(movement, phase);
+      expect(pose.front).toBe(false);
+      expect(pose.headMirror).toBe(true);
+      expect(pose.headAngle).toBe(-90);
+    }
+  }
+});
+
+test("curls use sagittal side-profile flexion and rows brace without hyperextending the support elbow", () => {
+  for (const movement of ["curl", "self-resisted-curl"] as const) {
+    const start = poseFor(movement, 0);
+    const mid = poseFor(movement, 1);
+    expect(start.front).toBe(false);
+    expect(mid.arms[1][2][0]).toBeLessThan(mid.arms[1][1][0] - 20); // forearm curls forward in sagittal plane
+  }
+  const [shoulder, elbow, hand] = poseFor("row", 0).arms[0];
+  const midpointY = (shoulder[1] + hand[1]) / 2;
+  expect(elbow[1]).toBeGreaterThan(midpointY); // slight natural inward flexion, not hyperextended upward
+});
+
+test("real-time exercise durations and asymmetric tempo curves match controlled training speeds", () => {
+  expect(movementDurations.march).toBeGreaterThanOrEqual(1);
+  expect(movementDurations.march).toBeLessThanOrEqual(1.3);
+  expect(movementDurations.circles).toBeGreaterThanOrEqual(1.3);
+  expect(movementDurations.circles).toBeLessThanOrEqual(1.8);
+  expect(movementDurations.plank).toBe(0);
+  expect(movementDurations.rest).toBe(0);
+
+  for (const movement of [
+    "squat",
+    "pushup",
+    "pike-pushup",
+    "lunge",
+    "goblet-lunge",
+    "press",
+    "crunch",
+    "row",
+    "prone-w",
+    "bridge",
+    "curl",
+    "self-resisted-curl",
+  ] as const) {
+    expect(movementDurations[movement]).toBeGreaterThanOrEqual(2.6);
+    expect(movementDurations[movement]).toBeLessThanOrEqual(4);
+  }
+
+  // Concentric-first exercises reach peak earlier than halfway and lower more slowly than they lift.
+  expect(motionPhaseFor("curl", 0.35)).toBe(2);
+  expect(motionPhaseFor("crunch", 0.38)).toBe(2);
+  // Eccentric-first exercises lower slowly past halfway and press back up faster.
+  expect(motionPhaseFor("pushup", 0.58)).toBe(2);
+  expect(motionPhaseFor("pushup", 0.3)).toBeLessThan(1.4);
 });

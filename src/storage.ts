@@ -1,56 +1,65 @@
 export type WorkoutId = "a" | "b";
 export type AppView = "home" | "a" | "b" | "food";
 export type NutritionGoal = "cut" | "maintain" | "build";
-export type SwapScope = "both" | "first" | "second";
-export type SkyrOptionId = "skyr" | "quark" | "greek-yogurt" | "cottage-cheese" | "protein-powder" | "tofu" | "tuna";
+export type RepPace = "slow" | "normal" | "fast";
+export type SkyrOptionId = "skyr" | "greek-yogurt" | "protein-water" | "protein-milk";
+
+export const WEEKDAYS = [
+  { day: 0, short: "Mon", name: "Monday" },
+  { day: 1, short: "Tue", name: "Tuesday" },
+  { day: 2, short: "Wed", name: "Wednesday" },
+  { day: 3, short: "Thu", name: "Thursday" },
+  { day: 4, short: "Fri", name: "Friday" },
+  { day: 5, short: "Sat", name: "Saturday" },
+  { day: 6, short: "Sun", name: "Sunday" },
+] as const;
+
+export type WorkoutDay = (typeof WEEKDAYS)[number]["day"];
 
 export interface UserProfile {
   weightKg: number;
   heightCm: number;
   goal: NutritionGoal;
-  workoutsPerWeek: number;
+  workoutDays: readonly WorkoutDay[];
 }
 
 export type WorkoutLog = Record<string, WorkoutId>;
-export type FoodChoices = [SkyrOptionId, SkyrOptionId];
 
 export const DEFAULT_PROFILE: UserProfile = {
   weightKg: 88,
   heightCm: 180,
   goal: "cut",
-  workoutsPerWeek: 6,
+  workoutDays: [0, 2, 4],
 };
 
-export const DEFAULT_FOOD_CHOICES: FoodChoices = ["skyr", "skyr"];
+export const DEFAULT_FOOD_CHOICE: SkyrOptionId = "skyr";
 export const DEFAULT_VIEW: AppView = "home";
-export const DEFAULT_SWAP_SCOPE: SwapScope = "both";
+export const DEFAULT_REP_PACE: RepPace = "normal";
 
 const PROFILE_KEY = "daily.profile.v1";
 const LOG_KEY = "daily.workoutLog.v1";
 const FOOD_KEY = "daily.foodChoices.v1";
+const BREAKFAST_KEY = "daily.breakfast.v1";
+const KETTLEBELL_KEY = "daily.kettlebell.v1";
 const VIEW_KEY = "daily.view.v1";
-const SWAP_SCOPE_KEY = "daily.swapScope.v1";
 const SOUND_KEY = "daily.sound.v1";
+const REP_PACE_KEY = "daily.repPace.v1";
 
 const VALID_GOALS: ReadonlySet<string> = new Set<NutritionGoal>(["cut", "maintain", "build"]);
 const VALID_VIEWS: ReadonlySet<string> = new Set<AppView>(["home", "a", "b", "food"]);
-const VALID_SWAP_SCOPES: ReadonlySet<string> = new Set<SwapScope>(["both", "first", "second"]);
+const VALID_REP_PACES: ReadonlySet<string> = new Set<RepPace>(["slow", "normal", "fast"]);
 const VALID_SKYR_OPTIONS: ReadonlySet<string> = new Set<SkyrOptionId>([
   "skyr",
-  "quark",
   "greek-yogurt",
-  "cottage-cheese",
-  "protein-powder",
-  "tofu",
-  "tuna",
+  "protein-water",
+  "protein-milk",
 ]);
 
-// Recommended training weekdays (0 = Mon ... 6 = Sun) for each weekly frequency.
-const WEEKLY_TRAINING_DAYS: Record<number, readonly number[]> = {
-  0: [],
+// Map older profiles to the same weekdays that their weekly count used.
+const LEGACY_TRAINING_DAYS: Partial<Record<number, readonly WorkoutDay[]>> = {
   1: [2], // Wed
   2: [0, 3], // Mon, Thu
-  3: [0, 2, 4], // Mon, Wed, Fri
+  3: DEFAULT_PROFILE.workoutDays,
   4: [0, 1, 3, 4], // Mon, Tue, Thu, Fri
   5: [0, 1, 2, 4, 5], // Mon, Tue, Wed, Fri, Sat
   6: [0, 1, 2, 3, 4, 5], // Mon–Sat
@@ -70,9 +79,10 @@ export function clampHeight(value: number): number {
   return Math.min(220, Math.max(140, Math.round(value)));
 }
 
-export function clampWorkoutsPerWeek(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_PROFILE.workoutsPerWeek;
-  return Math.min(7, Math.max(0, Math.round(value)));
+function normalizeWorkoutDays(value: unknown): readonly WorkoutDay[] {
+  if (!Array.isArray(value)) return DEFAULT_PROFILE.workoutDays;
+  const days = WEEKDAYS.filter(({ day }) => value.includes(day)).map(({ day }) => day);
+  return days.length ? days : DEFAULT_PROFILE.workoutDays;
 }
 
 function readJson(key: string): unknown {
@@ -103,11 +113,9 @@ export function loadProfile(): UserProfile {
     typeof record.goal === "string" && VALID_GOALS.has(record.goal)
       ? (record.goal as NutritionGoal)
       : DEFAULT_PROFILE.goal;
-  const workoutsPerWeek =
-    typeof record.workoutsPerWeek === "number"
-      ? clampWorkoutsPerWeek(record.workoutsPerWeek)
-      : DEFAULT_PROFILE.workoutsPerWeek;
-  return { weightKg, heightCm, goal, workoutsPerWeek };
+  const legacyCount = typeof record.workoutsPerWeek === "number" ? Math.min(7, Math.round(record.workoutsPerWeek)) : 0;
+  const workoutDays = normalizeWorkoutDays(record.workoutDays ?? LEGACY_TRAINING_DAYS[legacyCount]);
+  return { weightKg, heightCm, goal, workoutDays };
 }
 
 export function saveProfile(profile: UserProfile): void {
@@ -115,7 +123,7 @@ export function saveProfile(profile: UserProfile): void {
     weightKg: clampWeight(profile.weightKg),
     heightCm: clampHeight(profile.heightCm),
     goal: VALID_GOALS.has(profile.goal) ? profile.goal : DEFAULT_PROFILE.goal,
-    workoutsPerWeek: clampWorkoutsPerWeek(profile.workoutsPerWeek),
+    workoutDays: normalizeWorkoutDays(profile.workoutDays),
   });
 }
 
@@ -135,23 +143,43 @@ export function saveWorkoutLog(log: WorkoutLog): void {
   writeJson(LOG_KEY, log);
 }
 
-export function loadFoodChoices(): FoodChoices {
-  const parsed = readJson(FOOD_KEY);
-  if (!Array.isArray(parsed) || parsed.length !== 2) return DEFAULT_FOOD_CHOICES;
-  const [first, second] = parsed;
-  if (
-    typeof first === "string" &&
-    typeof second === "string" &&
-    VALID_SKYR_OPTIONS.has(first) &&
-    VALID_SKYR_OPTIONS.has(second)
-  ) {
-    return [first as SkyrOptionId, second as SkyrOptionId];
-  }
-  return DEFAULT_FOOD_CHOICES;
+export function loadKettlebellEnabled(): boolean {
+  return readJson(KETTLEBELL_KEY) === true;
 }
 
-export function saveFoodChoices(choices: FoodChoices): void {
-  writeJson(FOOD_KEY, choices);
+export function saveKettlebellEnabled(enabled: boolean): void {
+  writeJson(KETTLEBELL_KEY, enabled);
+}
+
+function normalizeFoodChoice(value: unknown): SkyrOptionId {
+  if (value === "protein-powder") return "protein-water";
+  if (typeof value === "string" && VALID_SKYR_OPTIONS.has(value)) {
+    return value as SkyrOptionId;
+  }
+  return DEFAULT_FOOD_CHOICE;
+}
+
+export function loadFoodChoice(): SkyrOptionId {
+  const parsed = readJson(FOOD_KEY);
+  if (typeof parsed === "string") return normalizeFoodChoice(parsed);
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    const first = normalizeFoodChoice(parsed[0]);
+    if (first !== DEFAULT_FOOD_CHOICE) return first;
+    if (parsed.length > 1) return normalizeFoodChoice(parsed[1]);
+  }
+  return DEFAULT_FOOD_CHOICE;
+}
+
+export function saveFoodChoice(choice: SkyrOptionId): void {
+  writeJson(FOOD_KEY, choice);
+}
+
+export function loadBreakfastEnabled(): boolean {
+  return readJson(BREAKFAST_KEY) === true;
+}
+
+export function saveBreakfastEnabled(enabled: boolean): void {
+  writeJson(BREAKFAST_KEY, enabled);
 }
 
 export function loadActiveView(): AppView {
@@ -166,18 +194,6 @@ export function saveActiveView(view: AppView): void {
   writeJson(VIEW_KEY, view);
 }
 
-export function loadSwapScope(): SwapScope {
-  const parsed = readJson(SWAP_SCOPE_KEY);
-  if (typeof parsed === "string" && VALID_SWAP_SCOPES.has(parsed)) {
-    return parsed as SwapScope;
-  }
-  return DEFAULT_SWAP_SCOPE;
-}
-
-export function saveSwapScope(scope: SwapScope): void {
-  writeJson(SWAP_SCOPE_KEY, scope);
-}
-
 export function loadSoundEnabled(): boolean {
   const parsed = readJson(SOUND_KEY);
   return typeof parsed === "boolean" ? parsed : true;
@@ -185,6 +201,18 @@ export function loadSoundEnabled(): boolean {
 
 export function saveSoundEnabled(enabled: boolean): void {
   writeJson(SOUND_KEY, enabled);
+}
+
+export function loadRepPace(): RepPace {
+  const parsed = readJson(REP_PACE_KEY);
+  if (typeof parsed === "string" && VALID_REP_PACES.has(parsed)) {
+    return parsed as RepPace;
+  }
+  return DEFAULT_REP_PACE;
+}
+
+export function saveRepPace(pace: RepPace): void {
+  writeJson(REP_PACE_KEY, pace);
 }
 
 export function toDateKey(date: Date): string {
@@ -202,44 +230,25 @@ export function cycleWorkoutStatus(current: WorkoutId | undefined): WorkoutId | 
 
 export function scheduledForDate(
   date: Date,
-  workoutsPerWeek: number = DEFAULT_PROFILE.workoutsPerWeek,
+  workoutDays: readonly WorkoutDay[] = DEFAULT_PROFILE.workoutDays,
 ): WorkoutId | "rest" {
-  const count = clampWorkoutsPerWeek(workoutsPerWeek);
-  const days = WEEKLY_TRAINING_DAYS[count];
-  if (days.length === 0) return "rest";
-
   const weekday = (date.getDay() + 6) % 7; // 0 = Mon ... 6 = Sun
-  const indexInWeek = days.indexOf(weekday);
+  const indexInWeek = workoutDays.findIndex((day) => day === weekday);
   if (indexInWeek === -1) return "rest";
 
   const utcDay = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
   const weekIndex = Math.floor((utcDay - MONDAY_EPOCH_UTC) / (7 * MS_PER_DAY));
-  const slot = weekIndex * count + indexInWeek;
+  const slot = weekIndex * workoutDays.length + indexInWeek;
   return ((slot % 2) + 2) % 2 === 0 ? "a" : "b";
 }
 
-export function workoutScheduleLabel(workoutId: WorkoutId, workoutsPerWeek: number): string {
-  const count = clampWorkoutsPerWeek(workoutsPerWeek);
-  switch (count) {
-    case 0:
-      return "Rest week";
-    case 1:
-      return "Wed · alt";
-    case 2:
-      return workoutId === "a" ? "Mon" : "Thu";
-    case 3:
-      return "Mon / Wed / Fri · alt";
-    case 4:
-      return workoutId === "a" ? "Mon / Thu" : "Tue / Fri";
-    case 5:
-      return "5×/wk · alt";
-    case 6:
-      return workoutId === "a" ? "Mon / Wed / Fri" : "Tue / Thu / Sat";
-    case 7:
-      return "Daily · alt";
-    default:
-      return workoutId === "a" ? "Mon / Wed / Fri" : "Tue / Thu / Sat";
-  }
+export function workoutScheduleLabel(workoutId: WorkoutId, workoutDays: readonly WorkoutDay[]): string {
+  if (workoutDays.length === 7) return "Daily · alt";
+  const alternatesByWeek = workoutDays.length % 2 === 1;
+  const workoutIndex = workoutId === "a" ? 0 : 1;
+  const days = alternatesByWeek ? workoutDays : workoutDays.filter((_, index) => index % 2 === workoutIndex);
+  const label = days.map((day) => WEEKDAYS[day].short).join(" / ");
+  return alternatesByWeek ? `${label} · alt` : label;
 }
 
 export interface CalendarCell {
@@ -267,7 +276,7 @@ export function buildMonthGrid(
   year: number,
   month: number,
   today: Date = new Date(),
-  workoutsPerWeek: number = DEFAULT_PROFILE.workoutsPerWeek,
+  workoutDays: readonly WorkoutDay[] = DEFAULT_PROFILE.workoutDays,
 ): CalendarCell[] {
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -280,7 +289,7 @@ export function buildMonthGrid(
     const dayOffset = index - mondayStartOffset;
     const date = new Date(year, month, 1 + dayOffset);
     const inCurrentMonth = date.getMonth() === month;
-    const scheduled = scheduledForDate(date, workoutsPerWeek);
+    const scheduled = scheduledForDate(date, workoutDays);
     const dateKey = toDateKey(date);
     cells.push({
       dateKey,

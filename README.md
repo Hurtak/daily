@@ -1,6 +1,6 @@
 # Daily
 
-A small, hardcoded workout and food dashboard. React, TypeScript, Vite+, and plain CSS. No backend, account, or settings screen.
+A workout and food dashboard built with React, TypeScript, Vite+, and plain CSS. Settings and workout logs live in the browser.
 
 [Open the live app](https://hurtak.github.io/health-dashboard/)
 
@@ -30,17 +30,17 @@ GitHub Actions runs the **Main workflow** on every push and pull request. Its `v
 
 After validation passes, pushes to `main` run the `deploy` job: build the production app and publish `dist/` to [GitHub Pages](https://hurtak.github.io/health-dashboard/). Pull requests and other branches only validate. GitHub Pages uses the GitHub Actions publishing source. Vite’s base path is `/health-dashboard/`, matching the repository URL.
 
-Tests cover both workout sequences, every screen, exercise guides, native dialogs, timer transitions, pause/resume, restart confirmation, navigation with preserved sessions, side-plank holds, the last three audio cues, mute, unavailable audio, and wake-lock cleanup. There is no end-to-end test suite or browser test dependency.
+Tests cover both workout sequences, every screen, exercise guides, native dialogs, auto-paced rep timers and pace switching, pause/resume, restart confirmation, navigation with preserved sessions, side-plank holds, rep/countdown/transition audio cues, mute, unavailable audio, and wake-lock cleanup. There is no end-to-end test suite or browser test dependency.
 
 Browser QA is separate from these unit tests. The integrated browser was used to check the overview, both previews, every workout phase, completion, nutrition, and help dialogs. Phone viewport checks include 320×568, 360×640, 390×844, 430×932, and 844×390 landscape. Main screens fit the viewport without scrolling or off-screen controls; workout controls are at least 44×44 CSS pixels. Longer notes scroll inside native dialogs. These are browser viewport checks, not physical-device tests.
 
 ## Movement diagram review
 
-Each diagram renders one articulated figure with fixed-length limb segments. Three reference poses define each movement; the pose solver samples a continuous cycle once, and native CSS transforms interpolate joint rotations smoothly at the browser’s refresh rate. Strength exercises ease into the lift and controlled return; arm circles turn continuously; the side plank stays still. Right-side steps mirror the figure. Pausing holds the current pose, reduced-motion preferences stop animation, and static thumbnails create no animation timelines. There is no JavaScript animation loop or animation library.
+Each diagram renders one articulated figure with fixed-length limb segments. Open an exercise in the workout preview or select **Guide** during a set to inspect three positions or play and pause a full repetition. The pose solver samples a continuous cycle, and CSS transforms interpolate joint rotations. Right-side steps mirror the figure. The side plank stays still, and the three position controls remain available in reduced-motion mode.
 
 The 33 key poses were reviewed for consistent scale, joint connections, floor contact, and equipment placement. The six new marching / bridge poses were also reviewed together in a static contact sheet. Geometry tests check full motion cycles for segment lengths, planted support points, closed loops, continuous trajectories, elbow/knee angles, alternating marching support, single-leg bridge alignment, fixed curl elbows, overhead alignment, pelvic movement, and the isometric plank. These checks protect the drawing geometry; they do not constitute clinical validation of exercise technique.
 
-Form references checked on 25 October 2026:
+Form references
 
 | Diagram                 | Reference and comparison                                                                                                                                                                                                                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,29 +55,29 @@ Form references checked on 25 October 2026:
 | Supported one-arm row   | [Physitrack kettlebell row video](https://us.physitrack.com/home-exercise-video/kettlebell-single-arm-bent-over-row) and [Nuffield Health instructions](https://www.nuffieldhealth.com/article/how-to-kettlebell-row): free hand visibly supported, trunk still, elbow draws back and the weight rises toward the side.                                 |
 | Curl                    | [StrengthLog kettlebell curl demonstration](https://www.strengthlog.com/kettlebell-curl/) and [Mayo Clinic instructions](https://www.mayoclinic.org/healthy-lifestyle/fitness/multimedia/biceps-curl/vid-20084675): fixed upper arm, elbow flexion, no torso swing. StrengthLog shows both arms; the app illustrates the same motion one arm at a time. |
 | Side plank              | [NASM side plank](https://www.nasm.org/resource-center/exercise-library/side-plank) and [US Marine Corps video](https://www.dvidshub.net/video/640254/side-plank): forearm support, elbow below shoulder, stacked hips/feet, straight legs, static hold.                                                                                                |
+| Pike push-up            | [NASM pike push-up](https://www.nasm.org/workout-exercise-guidance/default?slug=pike-push-up) shows planted hands and feet, raised hips, and a controlled lowering of the head.                                                                                                                                                                         |
+| Prone W raise           | [NHS shoulder exercises](https://www.rightdecisions.scot.nhs.uk/media/alqcguhk/shoulder-rehabilitation-exercises.pdf) show the face-down W position and a small hand lift with the shoulder blades drawn back.                                                                                                                                          |
 
 References informed original SVG drawings; no reference photos or videos are bundled in the app. The rest screen's bottle is decorative.
 
 ## The routine
 
-The app follows the revised plan supplied in the conversation. Alternate A → B → A → B → A → B, then rest or walk. Both workouts contain four exercises, with biceps and abs prioritized and no deadlifts.
+New profiles start with training on Monday, Wednesday, and Friday. Pick your workout days in Body settings. The calendar alternates A and B across the selected days, and nutrition targets use the number selected.
 
-| Workout            | Pair 1 · 3 rounds                                                        | Pair 2 · 2 rounds                                                                       |
-| ------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| A — Push-ups & abs | Push-ups: 8–20 reps; reverse crunches: 10–20 reps                        | Kettlebell reverse lunges: 8–12 per leg; one-arm overhead press: 6–12 per arm           |
-| B — Biceps first   | Kettlebell biceps curl: 6–15 per arm; side plank: 20–40 seconds per side | Supported one-arm kettlebell row: 10–20 per arm; single-leg glute bridge: 10–15 per leg |
+| Workout                     | Pair 1 · 3 rounds                                             | Pair 2 · 2 rounds                                           |
+| --------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| A · Abs, biceps & shoulders | Reverse crunch, 10–15 reps. Self-resisted curl, 8–12 per arm. | Pike push-up, 5–10 reps. Side plank, 20–30 sec per side.    |
+| B · Full body               | Reverse lunge, 8–12 per leg. Prone W raise, 10–15 reps.       | Push-up, 8–15 reps. Single-leg glute bridge, 10–15 per leg. |
+
+Both workouts start with bodyweight exercises. Toggle **Use 10 kg kettlebell** to switch supported exercises across both workouts: Workout A switches to one-arm kettlebell curls (6–12 per arm) and one-arm overhead presses (6–10 per arm); Workout B switches to goblet reverse lunges (8–12 per leg) and supported one-arm rows (10–15 per arm). The shared setting persists in the browser and applies to the preview, warm-up, and timer.
 
 The player has a 5-second lead-in and an exactly 3-minute guided warm-up: 45 seconds of brisk marching, 30 seconds of bodyweight squats, 45 seconds of arm circles, then 15 seconds of easy practice for each of the day's four exercises. Cover both sides during easy practice where relevant.
 
-Complete both sides of an exercise before moving to the next. Rest 60 seconds after each round, except the final round of Pair 2. Pair 1 always finishes before Pair 2. Strength sets stay rep-based: tap **Set complete** after the prescribed repetitions. The fixed side-plank timer uses **30 seconds per side**, within the supplied 20–40-second range; use **Skip hold** before form deteriorates. Completion shows 14 exercise / side steps for A and 20 for B, with the 3 + 2 round structure.
+Complete both sides of an exercise before moving to the next. Finish Pair 1 before starting Pair 2. Rest 60–90 seconds after each round except the last. The app counts down 60 seconds for each rest and 30 seconds per side plank. Rep-based sets automatically count through the target max reps at your selected **Slow / Normal / Fast** pace, sync the movement animation, cue each rep with a distinct tone, and proceed to the next step automatically. Tap **Set complete** anytime to finish a set early or **Skip hold** to end a plank early. The completion screen counts the sets and sides for the active equipment mode.
 
-The target session length is **20–25 minutes**. The 25-minute stop is guidance in the plan notes; the timer does not automatically end a session. Finish most repetition sets with 1–3 clean repetitions left, and end planks before the hips sag or rotate. Take an extra recovery day if soreness affects technique or performance.
+The target session length is **20–25 minutes**. Finish rep-based sets with about two clean reps left, and end planks before the hips sag or rotate. Make the exercise a little harder once you reach the top of its range on every set. [ACSM resistance training guidance](https://acsm.org/resistance-training-guidelines-update-2026/)
 
-If starting fresh, use **2 rounds of both pairs in week one**; the fixed player implements the regular 3 / 2 routine. On climbing days, skip curls and rows; bridges and planks are optional if comfortable. The weekly routine provides nine direct biceps sets per arm plus six rowing sets per arm. The food plan retains the roughly 140 g daily protein target.
-
-Exercise notes describe push-up progressions, the pike push-up alternative for an overly heavy press, two-handed curls for 10–20 repetitions, and assisted → single-leg → weighted glute bridges. With a bilateral substitute, finish the first arm step and skip the second. Record repetitions outside the app; after reaching the upper target in every set for two consecutive sessions, progress the variation or resistance. Controlled lowering is useful, but increasingly slow repetitions do not replace greater resistance indefinitely. [ACSM's 2026 guidance](https://acsm.org/resistance-training-guidelines-update-2026/) also emphasizes consistency and supports home and bodyweight resistance training.
-
-Sounds play for the final three seconds and interval changes using Web Audio, enabled by the start button. The timer uses elapsed time rather than counting callbacks. Navigating away pauses the current workout; returning to it preserves progress until the page reloads. The browser’s screen wake lock is used where available. Keep the tab open and the device awake for reliable audio; mobile browsers can suspend background pages. Refreshing resets the session.
+Sounds play for each rep, the final three seconds of timed intervals, and step transitions using Web Audio, enabled by the start button. The timer uses elapsed time rather than counting callbacks. Navigating away pauses the current workout; returning to it preserves progress until the page reloads. The browser’s screen wake lock is used where available. Keep the tab open and the device awake for reliable audio; mobile browsers can suspend background pages. Refreshing resets the session.
 
 The app uses a `100dvh` grid, safe-area padding, and CSS container units to fit the movement ring around the available space. It prevents page overscroll, and long guidance lives in native dialogs. All movement animation uses CSS and respects reduced-motion preferences. Google Fonts is the only external visual request; system font fallbacks work offline. All workout data, diagrams, timers, and audio are local.
 

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import Icon from "./Icon";
-import InfoDialog from "./InfoDialog";
 import MovementDiagram from "./MovementDiagram";
 import ProfileFields from "./ProfileFields";
 import { pairRounds, workoutMinutes, workouts } from "./workouts";
@@ -10,8 +9,11 @@ import {
   DEFAULT_PROFILE,
   formatMonthTitle,
   formatWeekday,
+  loadBreakfastEnabled,
+  saveBreakfastEnabled,
   scheduledForDate,
   toDateKey,
+  WEEKDAYS,
   workoutScheduleLabel,
 } from "./storage";
 import type { UserProfile, WorkoutLog } from "./storage";
@@ -20,40 +22,50 @@ interface Props {
   onNavigate: (view: "a" | "b" | "food") => void;
   profile?: UserProfile;
   onProfileChange?: (next: UserProfile) => void;
+  includeBreakfast?: boolean;
+  onBreakfastChange?: (enabled: boolean) => void;
   workoutLog?: WorkoutLog;
   onToggleDay?: (dateKey: string) => void;
   today?: Date;
 }
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-
 export default function Home({
   onNavigate,
   profile = DEFAULT_PROFILE,
   onProfileChange = () => {},
+  includeBreakfast: controlledBreakfast,
+  onBreakfastChange,
   workoutLog = {},
   onToggleDay = () => {},
   today,
 }: Props) {
   const [defaultToday] = useState(() => new Date());
   const referenceToday = today ?? defaultToday;
-  const [showNotes, setShowNotes] = useState(false);
+  const [internalBreakfast, setInternalBreakfast] = useState(loadBreakfastEnabled);
   const [monthCursor, setMonthCursor] = useState(() => ({
     year: referenceToday.getFullYear(),
     month: referenceToday.getMonth(),
   }));
 
-  const plan = useMemo(() => calculateNutritionPlan(profile), [profile]);
+  const includeBreakfast = controlledBreakfast ?? internalBreakfast;
+  function updateBreakfast(enabled: boolean) {
+    setInternalBreakfast(enabled);
+    if (onBreakfastChange) onBreakfastChange(enabled);
+    else saveBreakfastEnabled(enabled);
+  }
+
+  const plan = useMemo(() => calculateNutritionPlan(profile, undefined, includeBreakfast), [profile, includeBreakfast]);
+  const { workoutDays } = profile;
   const cells = useMemo(
-    () => buildMonthGrid(monthCursor.year, monthCursor.month, referenceToday, profile.workoutsPerWeek),
-    [monthCursor.year, monthCursor.month, referenceToday, profile.workoutsPerWeek],
+    () => buildMonthGrid(monthCursor.year, monthCursor.month, referenceToday, workoutDays),
+    [monthCursor.year, monthCursor.month, referenceToday, workoutDays],
   );
   const monthTitle = formatMonthTitle(monthCursor.year, monthCursor.month);
   const isCurrentMonth =
     monthCursor.year === referenceToday.getFullYear() && monthCursor.month === referenceToday.getMonth();
   const todayKey = toDateKey(referenceToday);
   const todayWeekday = formatWeekday(referenceToday);
-  const todayScheduled = scheduledForDate(referenceToday, profile.workoutsPerWeek);
+  const todayScheduled = scheduledForDate(referenceToday, workoutDays);
   const todayLogged = workoutLog[todayKey];
   const focusWorkout =
     todayScheduled === "rest" ? undefined : workouts.find((workout) => workout.id === todayScheduled);
@@ -83,12 +95,7 @@ export default function Home({
 
   return (
     <div className="home-page">
-      <section className="hero">
-        <h1>A little stronger.</h1>
-        <button className="text-button" onClick={() => setShowNotes(true)}>
-          Plan notes
-        </button>
-      </section>
+      <h1>Overview</h1>
 
       <div className="ed-grid">
         <div className="ed-main-col">
@@ -145,8 +152,8 @@ export default function Home({
             )}
 
             <div className="month-weekdays" aria-hidden="true">
-              {WEEKDAYS.map((day) => (
-                <span key={day}>{day}</span>
+              {WEEKDAYS.map(({ day, short }) => (
+                <span key={day}>{short}</span>
               ))}
             </div>
 
@@ -197,7 +204,7 @@ export default function Home({
                 </span>
                 <span>
                   <i className="legend-swatch swatch-plan" aria-hidden="true" />
-                  Planned ({profile.workoutsPerWeek}×/wk)
+                  Planned ({workoutDays.length}×/wk)
                 </span>
               </div>
               <span className="legend-hint">Tap day to log</span>
@@ -226,7 +233,7 @@ export default function Home({
                     </div>
                     <h3 className="ed-serif">{workout.name}</h3>
                     <p>{workout.subtitle}</p>
-                    <span className="card-days">{workoutScheduleLabel(workout.id, profile.workoutsPerWeek)}</span>
+                    <span className="card-days">{workoutScheduleLabel(workout.id, workoutDays)}</span>
                   </div>
                   <div className="card-art">
                     <MovementDiagram movement={workout.id === "a" ? "crunch" : "curl"} phase={0} />
@@ -303,7 +310,13 @@ export default function Home({
               <h2 className="ed-serif">Settings</h2>
               <Icon name="settings" size={16} />
             </div>
-            <ProfileFields profile={profile} onChange={onProfileChange} compact />
+            <ProfileFields
+              profile={profile}
+              onChange={onProfileChange}
+              includeBreakfast={includeBreakfast}
+              onBreakfastChange={updateBreakfast}
+              compact
+            />
           </section>
 
           <button
@@ -332,32 +345,6 @@ export default function Home({
           </button>
         </div>
       </div>
-
-      {showNotes && (
-        <InfoDialog title="Your weekly plan" onClose={() => setShowNotes(false)}>
-          <p>
-            Alternate Workout A and Workout B across your {profile.workoutsPerWeek} weekly training days. Rest or walk
-            on off days.
-          </p>
-          <p>One 10 kg kettlebell and a mat are all you need.</p>
-          <p>
-            Pair 1 uses three rounds and Pair 2 uses two. Complete both sides of one-sided moves before moving on. Rest
-            60 seconds after each round except the last.
-          </p>
-          <p>
-            If starting fresh, use two rounds of both pairs in week one; the timer follows the regular 3 / 2 structure.
-            Stop sets with 1–3 clean reps in reserve, and end planks before your hips sag.
-          </p>
-          <p>
-            Stop at 25 minutes rather than rushing. On climbing days, skip curls and rows; bridges and planks are
-            optional.
-          </p>
-          <p>
-            Aim for roughly {plan.dailyProteinTarget} g protein and {plan.dailyCalories} kcal daily at{" "}
-            {plan.workoutsPerWeek} workouts/week.
-          </p>
-        </InfoDialog>
-      )}
     </div>
   );
 }

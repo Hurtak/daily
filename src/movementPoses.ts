@@ -1,3 +1,4 @@
+import type { RepPace } from "./storage";
 import type { Movement } from "./workouts";
 
 export type Point = readonly [number, number];
@@ -22,21 +23,78 @@ interface Torso {
   hips: readonly [Point, Point];
   head: Point;
   headAngle: number;
+  headMirror?: boolean;
   front: boolean;
 }
 export interface Pose extends Torso {
-  arms: readonly [Limb, Limb]; // far, near
+  arms: readonly [Limb, Limb]; // far, near (left, right in front/overhead views)
   legs: readonly [Limb, Limb];
   toes: readonly [Point, Point];
   bell?: { grip: Point; rotation: number };
-  support?: "bench" | "mat";
+  support?: "bench" | "mat" | "overhead-mat";
 }
+
+// Real-time duration (seconds) for one full rep or stride cycle at proper controlled exercise tempo.
+export const movementDurations: Record<Movement, number> = {
+  march: 1.1,
+  circles: 1.5,
+  squat: 2.8,
+  pushup: 3.2,
+  "pike-pushup": 3.6,
+  lunge: 3.2,
+  "goblet-lunge": 3.6,
+  press: 3.6,
+  crunch: 3.5,
+  row: 3.2,
+  "prone-w": 3.4,
+  bridge: 3.4,
+  curl: 3.6,
+  "self-resisted-curl": 3.8,
+  plank: 0,
+  rest: 0,
+};
+
+export const repPaceMultipliers: Record<RepPace, number> = {
+  slow: 1.3,
+  normal: 1,
+  fast: 0.75,
+};
+
+export function repDurationFor(movement: Movement, pace: RepPace = "normal"): number {
+  const base = movementDurations[movement];
+  if (base <= 0) return 0;
+  return Math.round(base * repPaceMultipliers[pace] * 100) / 100;
+}
+
+interface TempoCurve {
+  rise: number; // fraction of cycle moving phase 0 -> 2
+  holdPeak: number; // fraction holding phase 2
+  fall: number; // fraction returning phase 2 -> 0
+}
+
+// Asymmetric real-time cadences: controlled lowering (eccentric) and crisp lift (concentric) with brief control pauses.
+const tempoCurves: Partial<Record<Exclude<Movement, "rest" | "plank" | "march" | "circles">, TempoCurve>> = {
+  squat: { rise: 0.54, holdPeak: 0.06, fall: 0.34 },
+  pushup: { rise: 0.56, holdPeak: 0.06, fall: 0.31 },
+  "pike-pushup": { rise: 0.55, holdPeak: 0.06, fall: 0.31 },
+  lunge: { rise: 0.53, holdPeak: 0.06, fall: 0.34 },
+  "goblet-lunge": { rise: 0.53, holdPeak: 0.06, fall: 0.33 },
+  crunch: { rise: 0.31, holdPeak: 0.12, fall: 0.51 },
+  bridge: { rise: 0.29, holdPeak: 0.15, fall: 0.5 },
+  "prone-w": { rise: 0.29, holdPeak: 0.18, fall: 0.47 },
+  row: { rise: 0.28, holdPeak: 0.1, fall: 0.56 },
+  curl: { rise: 0.3, holdPeak: 0.09, fall: 0.55 },
+  "self-resisted-curl": { rise: 0.34, holdPeak: 0.08, fall: 0.52 },
+  press: { rise: 0.28, holdPeak: 0.09, fall: 0.55 },
+};
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
 export const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 export const heading = (a: Point, b: Point) => (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
 export const angleBetween = (from: number, to: number) => ((to - from + 540) % 360) - 180;
 const offset = (p: Point, x: number, y: number): Point => [p[0] + x, p[1] + y];
+const ease = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * t);
+
 function valueAt(values: readonly number[], phase: number): number {
   const index = Math.min(1, Math.floor(phase));
   return values[index] + (values[index + 1] - values[index]) * (phase - index);
@@ -128,9 +186,12 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
         [160, 153],
       ];
       const body = torso(pointAt(hips, phase), valueAt([-90, -105, -120], phase));
+      // Arms start naturally at sides while standing and counterbalance forward as hips descend.
+      const upperArm = valueAt([102, 148, 192], phase);
+      const forearm = valueAt([114, 154, 188], phase);
       return finish(
         body,
-        [arm(body.shoulders[0], -165, -175), arm(body.shoulders[1], -165, -175)],
+        [arm(body.shoulders[0], upperArm, forearm), arm(body.shoulders[1], upperArm, forearm)],
         [bendLeg(body.hips[0], [132, 186]), bendLeg(body.hips[1], [140, 186])],
       );
     }
@@ -157,71 +218,112 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
       );
     }
     case "pushup": {
-      const heading = valueAt([203, 198.5, 194], phase);
-      const toe: Point = [201, 187];
+      const headingAngle = valueAt([203, 198, 193], phase);
+      const toe: Point = [204, 187];
       const ankle = along(toe, anatomy.foot, -60);
-      const hip = along(ankle, anatomy.thigh + anatomy.shin, heading);
-      const body: Torso = { ...torso(hip, heading), hips: [hip, hip] };
-      // Both legs remain straight and parallel to the neutral trunk.
-      const legs: Pose["legs"] = [leg(body.hips[0], heading - 180), leg(body.hips[1], heading - 180)];
-      return finish(body, [bendArm(body.shoulders[0], [115, 186]), bendArm(body.shoulders[1], [106, 186])], legs, {
+      const hip = along(ankle, anatomy.thigh + anatomy.shin, headingAngle);
+      const body: Torso = { ...torso(hip, headingAngle), hips: [hip, hip] };
+      // Both legs remain straight and parallel to the neutral trunk, hands stacked beneath shoulders.
+      const legs: Pose["legs"] = [leg(body.hips[0], headingAngle - 180), leg(body.hips[1], headingAngle - 180)];
+      return finish(body, [bendArm(body.shoulders[0], [111, 186]), bendArm(body.shoulders[1], [105, 186])], legs, {
         support: "mat",
         toes: [toe, toe],
       });
     }
-    case "lunge": {
+    case "pike-pushup": {
+      const toe: Point = [200, 187];
+      const ankle = along(toe, anatomy.foot, -60);
+      const legHeading = valueAt([-118, -125, -132], phase);
+      const hip = along(ankle, anatomy.thigh + anatomy.shin, legHeading);
+      const body = torso(hip, valueAt([159, 152, 145], phase));
+      const legs: Pose["legs"] = [leg(hip, legHeading + 180), leg(hip, legHeading + 180)];
+      return finish(body, [bendArm(body.shoulders[0], [136, 186]), bendArm(body.shoulders[1], [129, 186])], legs, {
+        support: "mat",
+        toes: [toe, toe],
+      });
+    }
+    case "lunge":
+    case "goblet-lunge": {
       const hips: Point[] = [
         [130, 118.5],
         [145, 132],
         [160, 152],
       ];
-      const body = torso(pointAt(hips, phase), -95);
+      const body = torso(pointAt(hips, phase), valueAt([-90, -94, -97], phase));
       const rearToe = pointAt([flatToe([136, 186]), [170, 187], [195, 187]], phase);
       const footAngle = valueAt([heading([136, 186], flatToe([136, 186])), 120, 120], phase);
       const rearAnkle = along(rearToe, anatomy.foot, footAngle + 180);
       const grip = offset(body.spine[0], -14, 10);
-      return finish(
-        body,
-        [bendArm(body.shoulders[0], offset(grip, -4, 0)), bendArm(body.shoulders[1], offset(grip, 4, 0))],
-        [bendLeg(body.hips[0], rearAnkle), bendLeg(body.hips[1], [130, 186])],
-        {
-          bell: { grip, rotation: 0 },
-          toes: [rearToe, flatToe([130, 186])],
-        },
-      );
+      const loaded = movement === "goblet-lunge";
+      const arms: Pose["arms"] = loaded
+        ? [bendArm(body.shoulders[0], offset(grip, -4, 0)), bendArm(body.shoulders[1], offset(grip, 4, 0))]
+        : [
+            arm(body.shoulders[0], valueAt([94, 100, 106], phase), valueAt([102, 124, 140], phase)),
+            arm(body.shoulders[1], valueAt([88, 94, 100], phase), valueAt([96, 118, 134], phase)),
+          ];
+      return finish(body, arms, [bendLeg(body.hips[0], rearAnkle), bendLeg(body.hips[1], [130, 186])], {
+        bell: loaded ? { grip, rotation: 0 } : undefined,
+        toes: [rearToe, flatToe([130, 186])],
+      });
     }
     case "press": {
-      const { body, legs } = standing();
+      const { body, legs } = standing(true);
       const arms: Pose["arms"] = [
         arm(body.shoulders[0], 96, 86),
-        arm(body.shoulders[1], valueAt([80, -30, -90], phase), -90),
+        arm(body.shoulders[1], valueAt([80, 0, -90], phase), -90),
       ];
-      // A normal rack/press: the bell rests behind the wrist, not bottoms-up.
+      // Normal rack/press: the bell rests behind the wrist and stays stacked smoothly to lockout.
       return finish(body, arms, legs, {
-        bell: { grip: arms[1][2], rotation: -45 },
+        bell: { grip: arms[1][2], rotation: valueAt([-45, -35, -22], phase) },
       });
     }
     case "curl": {
-      const { body, legs } = standing();
+      // Side profile shows true sagittal elbow flexion with fixed upper arm by the ribs.
+      const { body, legs } = standing(false);
       const arms: Pose["arms"] = [
-        arm(body.shoulders[0], 96, 86),
-        arm(body.shoulders[1], 83, valueAt([90, 5, -65], phase)),
+        arm(body.shoulders[0], 94, 102),
+        arm(body.shoulders[1], 88, valueAt([90, 175, 244], phase)),
       ];
       return finish(body, arms, legs, {
         bell: { grip: arms[1][2], rotation: 0 },
       });
+    }
+    case "self-resisted-curl": {
+      // Side profile shows the working arm curling forward while the free hand resists against the forearm.
+      const { body, legs } = standing(false);
+      const forearm = valueAt([108, 175, 240], phase);
+      const workingArm = arm(body.shoulders[1], 100, forearm);
+      const contact = along(workingArm[1], anatomy.forearm * (2 / 3), forearm);
+      const resistingArm = bendArm(body.shoulders[0], contact, -1);
+      return finish(body, [resistingArm, workingArm], legs);
     }
     case "row": {
       const body = torso([158, 122], -155);
       const upper = valueAt([90, 45, -5], phase);
       const arms: Pose["arms"] = [
-        bendArm(body.shoulders[0], [82, 141], 1),
-        arm(body.shoulders[1], upper, valueAt([90, 100, 115], phase)),
+        // Sign -1 keeps the bracing elbow naturally slightly flexed inward rather than hyperextended.
+        bendArm(body.shoulders[0], [82, 141], -1),
+        arm(body.shoulders[1], upper, valueAt([90, 102, 116], phase)),
       ];
       return finish(body, arms, [bendLeg(body.hips[0], [143, 186]), bendLeg(body.hips[1], [174, 186])], {
         bell: { grip: arms[1][2], rotation: 0 },
         support: "bench",
       });
+    }
+    case "prone-w": {
+      const body = torso([130, 108], -90, true);
+      const upperArm = valueAt([54, 38, 22], phase);
+      const forearm = valueAt([52, 70, 86], phase);
+      const legs: Pose["legs"] = [leg(body.hips[0], 94), leg(body.hips[1], 86)];
+      return finish(
+        body,
+        [arm(body.shoulders[0], 180 - upperArm, forearm - 180), arm(body.shoulders[1], upperArm, -forearm)],
+        legs,
+        {
+          support: "overhead-mat",
+          toes: [along(legs[0][2], anatomy.foot, 94), along(legs[1][2], anatomy.foot, 86)],
+        },
+      );
     }
     case "crunch": {
       const shoulder: Point = [63, 181];
@@ -235,7 +337,9 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
         ],
         hips: [offset(hip, 0, -1), offset(hip, 0, 1)],
         head: [48, 181],
-        headAngle: 90,
+        // Mirrored profile rotated -90 deg places hair on crown/occiput on the mat and face looking upward.
+        headAngle: -90,
+        headMirror: true,
         front: false,
       };
       const thigh = valueAt([-90, -110, -125], phase);
@@ -255,9 +359,9 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
       const topAngle = -Math.asin(
         (anatomy.shin - (186 - shoulder[1])) / (anatomy.upperBack + anatomy.lowerBack + anatomy.thigh),
       );
-      const heading = ((topAngle * phase) / 2 / Math.PI) * 180;
-      const waist = along(shoulder, anatomy.upperBack, heading);
-      const hip = along(waist, anatomy.lowerBack, heading);
+      const headingAngle = ((topAngle * phase) / 2 / Math.PI) * 180;
+      const waist = along(shoulder, anatomy.upperBack, headingAngle);
+      const hip = along(waist, anatomy.lowerBack, headingAngle);
       const workingAnkle: Point = [
         shoulder[0] + (anatomy.upperBack + anatomy.lowerBack + anatomy.thigh) * Math.cos(topAngle),
         186,
@@ -270,13 +374,14 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
         ],
         hips: [hip, hip],
         head: [48, 181],
-        headAngle: 90,
+        headAngle: -90,
+        headMirror: true,
         front: false,
       };
-      const legs: Pose["legs"] = [chain(hip, anatomy.thigh, -110, anatomy.shin, -20), bendLeg(hip, workingAnkle, -1)];
+      const legs: Pose["legs"] = [chain(hip, anatomy.thigh, -105, anatomy.shin, -15), bendLeg(hip, workingAnkle, -1)];
       return finish(body, [arm(body.shoulders[0], 0, 0), arm(body.shoulders[1], 0, 0)], legs, {
         support: "mat",
-        toes: [flatToe(legs[0][2], 1), flatToe(workingAnkle, 1)],
+        toes: [along(legs[0][2], anatomy.foot, -105), flatToe(workingAnkle, 1)],
       });
     }
     case "plank": {
@@ -296,7 +401,7 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
       const free = bendArm(body.shoulders[1], body.hips[1], -1);
       return finish(body, [supporting, free], legs, {
         support: "mat",
-        toes: [flatToe(legs[0][2]), flatToe(legs[1][2])],
+        toes: [along(legs[0][2], anatomy.foot, angle - 90), along(legs[1][2], anatomy.foot, topLegAngle - 90)],
       });
     }
     case "circles": {
@@ -307,13 +412,26 @@ export function poseFor(movement: Exclude<Movement, "rest">, phase: number): Pos
   }
 }
 
+export function motionPhaseFor(movement: Exclude<Movement, "rest">, progress: number): number {
+  if (movement === "plank") return 0;
+  if (movement === "circles") return progress * 3;
+  if (movement === "march") return 1 - Math.cos(progress * Math.PI * 2);
+  const curve = tempoCurves[movement];
+  if (!curve) return 1 - Math.cos(progress * Math.PI * 2);
+  const { rise, holdPeak, fall } = curve;
+  if (progress < rise) return 2 * ease(progress / rise);
+  if (progress < rise + holdPeak) return 2;
+  if (progress < rise + holdPeak + fall) return 2 * (1 - ease((progress - rise - holdPeak) / fall));
+  return 0;
+}
+
 export function motionPosesFor(movement: Exclude<Movement, "rest">): Pose[] {
   if (movement === "plank") return [poseFor(movement, 0)];
   // Sample the rig once; CSS interpolates joint rotations at the display's refresh rate.
-  const poses = Array.from({ length: 48 }, (_, index) => {
-    const progress = index / 48;
-    const phase = movement === "circles" ? progress * 3 : 1 - Math.cos(progress * Math.PI * 2);
-    return poseFor(movement, phase);
+  const samples = 60;
+  const poses = Array.from({ length: samples }, (_, index) => {
+    const progress = index / samples;
+    return poseFor(movement, motionPhaseFor(movement, progress));
   });
   return [...poses, poses[0]];
 }
@@ -324,15 +442,22 @@ export const movementDescriptions: Record<Movement, string> = {
   circles:
     "Keep the elbows straight and circle the arms from the shoulders. The curved arrow indicates the circular path.",
   pushup: "Keep the head, trunk, and legs in one line. Bend the elbows while the hands and toes stay planted.",
+  "pike-pushup":
+    "Keep the hips high in an inverted V. Lower the head toward the floor and press back up with hands and feet planted.",
   lunge:
     "Keep the working foot forward and planted. Step the other foot back, lower the rear knee, then return to standing.",
+  "goblet-lunge": "Hold the kettlebell at your chest as you step back, with the working foot forward and planted.",
   press: "Press one kettlebell from the rack to a straight arm overhead. Keep the wrist stacked and the torso still.",
   crunch:
     "Keep the head and shoulders on the mat and the knees bent. Curl the pelvis toward the ribs, then lower with control.",
   row: "Brace the free hand on a sturdy support. Keep the trunk still while pulling the kettlebell toward the hip.",
+  "prone-w":
+    "Shown from above. Lie face down with elbows bent in a W. Squeeze the shoulder blades together and lift the arms slightly.",
   bridge:
     "Lie on your back with the working foot planted and the other leg lifted. Raise and lower the pelvis with a neutral back while the head, shoulders, and working foot stay on the mat.",
   curl: "Keep the upper arm by the ribs and the torso still. Bend only the elbow to raise and lower the kettlebell.",
+  "self-resisted-curl":
+    "Curl palm up while the free hand presses against the working forearm through the lift and lower.",
   plank:
     "Hold still on the forearm with the supporting elbow below the shoulder. Keep the hips lifted and the body aligned.",
   rest: "Rest and let your breathing settle.",

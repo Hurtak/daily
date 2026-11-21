@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ExerciseGuide from "./ExerciseGuide";
 import MovementDiagram from "./MovementDiagram";
 import Icon from "./Icon";
 import InfoDialog from "./InfoDialog";
-import { buildSteps, pairRounds, warmupAt, warmupFor, workoutMinutes } from "./workouts";
-import type { Exercise, Workout } from "./workouts";
+import {
+  buildSteps,
+  exerciseFor,
+  exerciseReps,
+  pairRounds,
+  restSeconds,
+  warmupAt,
+  warmupFor,
+  workoutMinutes,
+} from "./workouts";
+import type { Workout, WorkoutExercise } from "./workouts";
+import { loadKettlebellEnabled, loadRepPace, saveKettlebellEnabled, saveRepPace } from "./storage";
+import type { RepPace } from "./storage";
 import { formatTime } from "./timer";
 import { useWorkoutTimer } from "./useWorkoutTimer";
 
@@ -13,14 +25,41 @@ interface Props {
   onBack: () => void;
   onFocusChange: (focused: boolean) => void;
   onComplete?: () => void;
+  useKettlebell?: boolean;
+  onKettlebellChange?: (enabled: boolean) => void;
+  repPace?: RepPace;
+  onRepPaceChange?: (pace: RepPace) => void;
 }
-type Info = "plan" | "warmup" | "form" | "restart" | Exercise;
+type Info = "plan" | "warmup" | "form" | "restart" | WorkoutExercise;
 
-export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange, onComplete }: Props) {
-  const steps = useMemo(() => buildSteps(workout), [workout]);
-  const warmup = useMemo(() => warmupFor(workout), [workout]);
+const REP_PACES: readonly { id: RepPace; label: string }[] = [
+  { id: "slow", label: "Slow" },
+  { id: "normal", label: "Normal" },
+  { id: "fast", label: "Fast" },
+];
+
+export default function WorkoutPlayer({
+  workout,
+  visible,
+  onBack,
+  onFocusChange,
+  onComplete,
+  useKettlebell: controlledKettlebell,
+  onKettlebellChange,
+  repPace: controlledRepPace,
+  onRepPaceChange,
+}: Props) {
+  const [localKettlebell, setLocalKettlebell] = useState(loadKettlebellEnabled);
+  const useKettlebell = controlledKettlebell ?? localKettlebell;
+  const [sessionKettlebell, setSessionKettlebell] = useState<boolean | null>(null);
+  const activeKettlebell = sessionKettlebell ?? useKettlebell;
+  const [localRepPace, setLocalRepPace] = useState<RepPace>(loadRepPace);
+  const repPace = controlledRepPace ?? localRepPace;
+  const [paceOffset, setPaceOffset] = useState<{ stepIndex: number; pace: RepPace; offset: number } | null>(null);
+  const steps = useMemo(() => buildSteps(workout, activeKettlebell, repPace), [workout, activeKettlebell, repPace]);
+  const warmup = useMemo(() => warmupFor(workout, activeKettlebell), [workout, activeKettlebell]);
   const timer = useWorkoutTimer(steps);
-  const { state, step, remaining, pause } = timer;
+  const { state, step, remaining, currentRep, pause } = timer;
   const [info, setInfo] = useState<Info | null>(null);
   const completedReportedRef = useRef(false);
   const ready = state.status === "ready";
@@ -29,15 +68,21 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
   const active = !ready && !complete;
   const isWarmup = step?.kind === "warmup";
   const isRest = step?.kind === "rest";
+  const isRepStep = step?.reps !== undefined && currentRep !== undefined;
+  const firstExercise = exerciseFor(workout.exercises[0], activeKettlebell);
   const warmupExercise = warmupAt(warmup, state.elapsed);
   const illustration = isWarmup
     ? warmupExercise.movement
-    : (step?.exercise?.movement ?? (isRest ? "rest" : workout.exercises[0].movement));
+    : (step?.exercise?.movement ?? (isRest ? "rest" : firstExercise.movement));
   const next = steps[state.index + 1];
-  const completedSets = steps.slice(0, state.index).filter((item) => item.kind === "exercise").length;
   const totalSets = steps.filter((item) => item.kind === "exercise").length;
   const circumference = 2 * Math.PI * 144;
-  const progress = step?.seconds ? Math.min(1, state.elapsed / step.seconds) : completedSets / totalSets;
+  const progress = step?.seconds ? Math.min(1, state.elapsed / step.seconds) : 0;
+  const isWarningCountdown = !isRepStep && remaining !== undefined && remaining <= 3;
+  const repPhaseOffset =
+    isRepStep && paceOffset && paceOffset.stepIndex === state.index && paceOffset.pace === repPace
+      ? paceOffset.offset
+      : 0;
 
   useEffect(() => {
     if (!visible) pause();
@@ -56,12 +101,14 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
   useEffect(() => {
     if (!visible) return;
     document.title = active
-      ? `${formatTime(remaining ?? state.elapsed)} · ${step.name} — Daily`
+      ? isRepStep
+        ? `${currentRep}/${step.reps} · ${step.name} — Daily`
+        : `${formatTime(remaining ?? state.elapsed)} · ${step.name} — Daily`
       : "Daily — a little stronger";
     return () => {
       document.title = "Daily — a little stronger";
     };
-  }, [visible, active, remaining, state.elapsed, step?.name]);
+  }, [visible, active, isRepStep, currentRep, step?.reps, remaining, state.elapsed, step?.name]);
 
   if (!visible) return null;
 
@@ -69,17 +116,55 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
     if (active) timer.pause();
     setInfo(value);
   }
+  function startWorkout() {
+    setSessionKettlebell(useKettlebell);
+    setPaceOffset(null);
+    timer.start();
+  }
+  function resetWorkout() {
+    setSessionKettlebell(null);
+    setPaceOffset(null);
+    timer.reset();
+  }
+  function toggleKettlebell(enabled: boolean) {
+    setLocalKettlebell(enabled);
+    if (onKettlebellChange) onKettlebellChange(enabled);
+    else saveKettlebellEnabled(enabled);
+  }
+  function changePace(nextPace: RepPace) {
+    if (nextPace === repPace) return;
+    timer.flushTick();
+    if (active && step?.repSeconds) {
+      const nextRepSeconds = buildSteps(workout, activeKettlebell, nextPace)[state.index]?.repSeconds;
+      if (nextRepSeconds) {
+        const rescaledElapsed = (state.elapsed / step.repSeconds) * nextRepSeconds;
+        const offset = Math.round((rescaledElapsed % nextRepSeconds) * 1000) / 1000;
+        setPaceOffset({ stepIndex: state.index, pace: nextPace, offset });
+      }
+    } else {
+      setPaceOffset(null);
+    }
+    if (onRepPaceChange) {
+      onRepPaceChange(nextPace);
+    } else {
+      setLocalRepPace(nextPace);
+      saveRepPace(nextPace);
+    }
+  }
+
+  const detailSlot = typeof info === "object" ? info : null;
+  const detail = detailSlot && exerciseFor(detailSlot, activeKettlebell);
   const infoTitle =
-    typeof info === "object"
-      ? (info?.name ?? "")
-      : (
+    typeof info === "string"
+      ? (
           {
             plan: "Workout notes",
             warmup: "Your warm-up",
             form: "A note on form",
             restart: "Restart this workout?",
           } as const
-        )[info ?? "plan"];
+        )[info]
+      : (detail?.name ?? "");
   const dialog = info && (
     <InfoDialog title={infoTitle} onClose={() => setInfo(null)}>
       {info === "restart" ? (
@@ -92,7 +177,7 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
             <button
               className="primary-button"
               onClick={() => {
-                timer.reset();
+                resetWorkout();
                 setInfo(null);
               }}
             >
@@ -116,38 +201,31 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
           </ul>
         </>
       ) : info === "form" ? (
-        <>
-          {step.exercise && (
-            <div className="dialog-muscles" aria-label="Target muscles">
-              <span className="muscle-prefix">Targets</span>
-              <span className="muscle-tags">
-                {step.exercise.muscles.map((muscle) => (
-                  <span className="muscle-tag" key={muscle}>
-                    {muscle}
-                  </span>
-                ))}
-              </span>
-            </div>
-          )}
-          <p>
-            {step.exercise?.detail ??
-              "Set your kettlebell nearby and find a little space. Keep this tab open and your device awake for countdown sounds."}
-          </p>
-        </>
+        step.exercise ? (
+          <ExerciseGuide exercise={step.exercise} side={step.side} />
+        ) : (
+          <p>Clear a little space. Keep this tab open and your device awake for countdown sounds.</p>
+        )
       ) : info === "plan" ? (
         <>
           <p>{workout.description}</p>
           <p>
             Complete both exercises in Pair 1 for three rounds, then both exercises in Pair 2 for two rounds. Do both
-            sides of a one-sided exercise before moving on. Rest for 60 seconds after each round except the final one.
+            sides of a one-sided exercise before moving on. Rest for 60–90 seconds after each round except the final
+            one. The timer gives you {restSeconds} seconds.
           </p>
           <p>
-            Finish most repetition sets with 1–3 clean reps left. End planks before your hips sag or rotate. If starting
-            fresh, use two rounds of both pairs in week one; this fixed timer follows the regular three / two routine.
+            Finish each rep-based set with about two clean reps left. When you reach the top of the range on every set,
+            make the exercise a little harder. End planks before your hips sag or rotate.
           </p>
           <p>
-            Strength sets use a stopwatch: finish the reps, then tap Set complete. Warm-up, rests, and plank holds count
-            down automatically.
+            Toggle Use 10 kg kettlebell to switch supported exercises between bodyweight and kettlebell variations
+            across both workouts.
+          </p>
+          <p>
+            Strength sets pace reps automatically at your chosen speed (Slow, Normal, or Fast), sound a rep cue on each
+            rep, and proceed to the next exercise when the target reps finish. Tap Set complete anytime if you finish
+            early.
           </p>
           <p>Keep this tab open and your device awake for countdown sounds.</p>
           <p>
@@ -155,23 +233,9 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
             performance. On climbing days, skip curls and rows; do bridges and planks only if comfortable.
           </p>
         </>
-      ) : (
-        <>
-          <MovementDiagram movement={info.movement} />
-          <div className="dialog-muscles" aria-label="Target muscles">
-            <span className="muscle-prefix">Targets</span>
-            <span className="muscle-tags">
-              {info.muscles.map((muscle) => (
-                <span className="muscle-tag" key={muscle}>
-                  {muscle}
-                </span>
-              ))}
-            </span>
-          </div>
-          <p>{info.cue}</p>
-          <p>{info.detail}</p>
-        </>
-      )}
+      ) : detailSlot && detail ? (
+        <ExerciseGuide key={detail.movement} exercise={detail} />
+      ) : null}
     </InfoDialog>
   );
 
@@ -179,44 +243,41 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
     return (
       <div className="workout-preview">
         <header className="preview-heading">
-          <div>
-            <span className="session-context">Workout {workout.label}</span>
-            <h1>
-              {workout.name}
-              <span className="period">.</span>
-            </h1>
-            <p>4 exercises · {workoutMinutes} minutes</p>
+          <h1>{workout.heading}</h1>
+          <p className="preview-description">{workout.description}</p>
+          <div className="preview-facts">
+            <span>4 exercises · {workoutMinutes} minutes</span>
+            <span className="preview-desktop-fact">{restSeconds} sec rests</span>
+            <label className={`kettlebell-toggle ${useKettlebell ? "is-checked" : ""}`}>
+              <input
+                type="checkbox"
+                checked={useKettlebell}
+                onChange={(event) => toggleKettlebell(event.target.checked)}
+              />
+              <Icon name="weight" size={15} />
+              <span>Use 10 kg kettlebell</span>
+            </label>
           </div>
+        </header>
+        <div className="preview-actions">
           <button className="text-button preview-help" onClick={() => showInfo("plan")} aria-label="Workout notes">
             <span>Workout notes</span>
             <Icon name="info" size={18} />
           </button>
-        </header>
-        <p className="page-description">{workout.description}</p>
-        <div className="preview-art">
-          <MovementDiagram movement={workout.exercises[0].movement} phase={0} />
-        </div>
-        <button className="primary-button preview-start" onClick={timer.start}>
-          <Icon name="play" size={21} />
-          Start workout
-        </button>
-        <div className="preview-facts">
-          <span>
-            <Icon name="weight" />
-            10 kg kettlebell + mat
-          </span>
-          <span>{pairRounds.join(" + ")} rounds</span>
-          <span>60 sec rests</span>
+          <button className="primary-button preview-start" onClick={startWorkout}>
+            <Icon name="play" size={21} />
+            Start workout
+          </button>
         </div>
         <section className="preview-exercises" aria-label="Workout exercises">
           <h2>Your session</h2>
-          <button className="preview-exercise" onClick={() => showInfo("warmup")}>
+          <button className="preview-exercise preview-warmup" onClick={() => showInfo("warmup")}>
             <span className="exercise-thumbnail">
               <Icon name="sun" size={26} />
             </span>
-            <span>
+            <span className="preview-exercise-copy">
               <strong>A little warm-up</strong>
-              <small>3 minutes · prepare for today</small>
+              <small>3 minutes</small>
             </span>
             <Icon name="arrow" size={17} />
           </button>
@@ -226,28 +287,28 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
                 Pair {block + 1}
                 <span>Back-to-back · {rounds} rounds</span>
               </p>
-              {workout.exercises.slice(block * 2, block * 2 + 2).map((exercise) => (
-                <button className="preview-exercise" key={exercise.name} onClick={() => showInfo(exercise)}>
-                  <span className="exercise-thumbnail">
-                    <MovementDiagram movement={exercise.movement} phase={0} />
-                  </span>
-                  <span>
-                    <strong>{exercise.name}</strong>
-                    <small>
-                      {exercise.reps}
-                      {exercise.sides ? ` per ${exercise.sides}` : ""}
-                    </small>
-                    <span className="muscle-tags" aria-label={`Targets ${exercise.muscles.join(", ")}`}>
-                      {exercise.muscles.map((muscle) => (
-                        <span className="muscle-tag" key={muscle}>
-                          {muscle}
-                        </span>
-                      ))}
+              {workout.exercises.slice(block * 2, block * 2 + 2).map((planned) => {
+                const exercise = exerciseFor(planned, useKettlebell);
+                return (
+                  <button className="preview-exercise" key={planned.movement} onClick={() => showInfo(planned)}>
+                    <span className="exercise-thumbnail">
+                      <MovementDiagram movement={exercise.movement} phase={2} />
                     </span>
-                  </span>
-                  <Icon name="arrow" size={17} />
-                </button>
-              ))}
+                    <span className="preview-exercise-copy">
+                      <strong>{exercise.name}</strong>
+                      <small>{exerciseReps(exercise)}</small>
+                      <span className="muscle-tags" aria-label={`Targets ${exercise.muscles.join(", ")}`}>
+                        {exercise.muscles.map((muscle) => (
+                          <span className="muscle-tag" key={muscle}>
+                            {muscle}
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                    <Icon name="arrow" size={17} />
+                  </button>
+                );
+              })}
             </div>
           ))}
         </section>
@@ -311,7 +372,7 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
           <button
             className="primary-button"
             onClick={() => {
-              timer.reset();
+              resetWorkout();
               onBack();
             }}
           >
@@ -355,7 +416,7 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
               )}
             </header>
             <div className="movement-stage">
-              <div className={`movement-ring ${remaining !== undefined && remaining <= 3 ? "last-seconds" : ""}`}>
+              <div className={`movement-ring ${isWarningCountdown ? "last-seconds" : ""}`}>
                 <svg className="focus-ring" viewBox="0 0 300 300" aria-hidden="true">
                   <circle cx="150" cy="150" r="144" className="ring-track" />
                   <circle
@@ -364,17 +425,42 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
                     r="144"
                     className="ring-fill"
                     strokeDasharray={circumference}
-                    strokeDashoffset={circumference * (step.seconds ? progress : 1 - progress)}
+                    strokeDashoffset={
+                      circumference * (isRepStep ? 1 - progress : step.seconds ? progress : 1 - progress)
+                    }
                   />
                 </svg>
-                <MovementDiagram movement={illustration} playing={!paused} side={step.side} />
+                <MovementDiagram
+                  movement={illustration}
+                  playing={!paused}
+                  side={step.side}
+                  duration={isRepStep ? step.repSeconds : undefined}
+                  delay={repPhaseOffset > 0 ? -repPhaseOffset : undefined}
+                  motionKey={isRepStep ? `${state.index}-${repPace}` : undefined}
+                />
               </div>
             </div>
-            <div className={`focus-countdown ${remaining !== undefined && remaining <= 3 ? "last-seconds" : ""}`}>
-              <strong role="timer" aria-label={remaining === undefined ? "Set elapsed time" : "Time remaining"}>
-                {formatTime(remaining ?? state.elapsed)}
-              </strong>
-              <span>{remaining === undefined ? "Set elapsed · go at your pace" : paused ? "Paused" : "Remaining"}</span>
+            <div className={`focus-countdown ${isWarningCountdown ? "last-seconds" : ""}`}>
+              {isRepStep ? (
+                <>
+                  <strong role="timer" aria-label={`Rep ${currentRep} of ${step.reps}`}>
+                    {currentRep}
+                    <span className="rep-total"> / {step.reps}</span>
+                  </strong>
+                  <span>
+                    {paused
+                      ? `Paused · ${formatTime(remaining ?? 0)} left`
+                      : `Rep · ${formatTime(remaining ?? 0)} left`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong role="timer" aria-label="Time remaining">
+                    {formatTime(remaining ?? state.elapsed)}
+                  </strong>
+                  <span>{paused ? "Paused" : "Remaining"}</span>
+                </>
+              )}
             </div>
             <p className="focus-cue">
               {isWarmup
@@ -382,10 +468,28 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
                 : (step.exercise?.cue ??
                   (isRest
                     ? "Let your breathing settle. A fresh set is coming."
-                    : "Set your kettlebell nearby and get comfortable."))}
+                    : activeKettlebell
+                      ? "Set your kettlebell nearby and clear a little space."
+                      : "Clear a little space and get comfortable."))}
             </p>
           </div>
           <footer className="focus-footer">
+            <div className="focus-pace">
+              <span className="focus-pace-label">Rep pace</span>
+              <div className="scope-pills" role="group" aria-label="Rep pace">
+                {REP_PACES.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`ed-scope-btn ${repPace === option.id ? "active" : ""}`}
+                    aria-pressed={repPace === option.id}
+                    onClick={() => changePace(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="focus-controls">
               <button
                 className="pause-button"
@@ -395,7 +499,7 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
                 <Icon name={paused ? "play" : "pause"} size={24} />
               </button>
               <button className="primary-button" onClick={timer.advance}>
-                {step.seconds === undefined
+                {isRepStep
                   ? "Set complete"
                   : isRest
                     ? "Skip rest"
@@ -404,7 +508,7 @@ export default function WorkoutPlayer({ workout, visible, onBack, onFocusChange,
                       : step.kind === "exercise"
                         ? "Skip hold"
                         : "Skip countdown"}
-                <Icon name={step.seconds === undefined ? "check" : "skip"} />
+                <Icon name={isRepStep ? "check" : "skip"} />
               </button>
             </div>
             <p className="focus-next">

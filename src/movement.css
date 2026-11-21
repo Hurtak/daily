@@ -26,7 +26,8 @@
   stroke-width: 7;
 }
 .figure-hand,
-.figure-grip {
+.figure-grip,
+.figure-ear {
   fill: #cd9c7c;
 }
 .figure-far {
@@ -44,33 +45,50 @@
   stroke: #527663;
   stroke-width: 10;
 }
-.figure .figure-shirt {
+.figure--front .figure-shirt {
   stroke: #527663;
-  stroke-width: 20;
+  stroke-width: 21;
+  stroke-linecap: butt;
+}
+.figure--profile .figure-shirt {
+  stroke: #527663;
+  stroke-width: 16;
   stroke-linecap: butt;
 }
 .figure-waist {
   fill: #527663;
 }
-.figure .figure-shorts {
+.figure--front .figure-shorts {
   stroke: #30483e;
-  stroke-width: 16;
+  stroke-width: 18;
+  stroke-linecap: butt;
+}
+.figure--profile .figure-shorts {
+  stroke: #30483e;
+  stroke-width: 15;
+  stroke-linecap: butt;
+}
+.figure-pelvis {
+  fill: #30483e;
 }
 .figure-head > circle {
   fill: #cd9c7c;
 }
-.figure .figure-hair {
-  stroke: #313c32;
-  stroke-width: 5;
+.figure-head > .figure-scalp {
+  fill: #313c32;
 }
-.figure .figure-face {
-  stroke: #4d4839;
-  stroke-width: 1.2;
+.figure .figure-hair {
+  fill: #313c32;
+  stroke: #313c32;
+  stroke-width: 0.8;
+}
+.figure-head > .figure-eye {
+  fill: #313c32;
 }
 .figure .figure-nose {
-  stroke: #cd9c7c;
-  stroke-width: 2;
   fill: #cd9c7c;
+  stroke: #cd9c7c;
+  stroke-width: 1.2;
 }
 .figure-bench {
   stroke: #96a58a;
@@ -122,7 +140,7 @@
 .movement-part {
   transform-box: view-box;
   transform-origin: 0 0;
-  animation: var(--motion-name, none) var(--movement-duration, 4.8s) linear infinite;
+  animation: var(--motion-name, none) var(--movement-duration, 3.4s) var(--movement-delay, 0s) linear infinite;
 }
 .is-still .movement-part {
   animation-play-state: paused;

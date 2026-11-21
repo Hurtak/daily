@@ -1,22 +1,23 @@
 import { expect, test } from "vite-plus/test";
 import { buildSteps, warmupAt, warmupFor, workouts } from "./workouts";
 
-test("the revised plans prioritize push-ups / abs and biceps, with target muscles and no deadlifts", () => {
+test("the new plans start with bodyweight abs, biceps and shoulders on A and full body on B", () => {
   expect(workouts[0].exercises.map(({ movement, reps }) => [movement, reps])).toEqual([
-    ["pushup", "8–20 reps"],
-    ["crunch", "10–20 reps"],
-    ["lunge", "8–12 reps"],
-    ["press", "6–12 reps"],
+    ["crunch", "10–15 reps"],
+    ["self-resisted-curl", "8–12 reps"],
+    ["pike-pushup", "5–10 reps"],
+    ["plank", "20–30 sec"],
   ]);
   expect(workouts[1].exercises.map(({ movement, reps }) => [movement, reps])).toEqual([
-    ["curl", "6–15 reps"],
-    ["plank", "20–40 sec"],
-    ["row", "10–20 reps"],
+    ["lunge", "8–12 reps"],
+    ["prone-w", "10–15 reps"],
+    ["pushup", "8–15 reps"],
     ["bridge", "10–15 reps"],
   ]);
-  expect(workouts[1].exercises[1].seconds).toBe(30);
+  expect(workouts[0].exercises[3].seconds).toBe(30);
   for (const workout of workouts) {
     for (const exercise of workout.exercises) {
+      expect(exercise.kettlebell).toBeUndefined();
       expect(exercise.muscles.length).toBeGreaterThanOrEqual(2);
     }
   }
@@ -35,7 +36,39 @@ test.each(workouts)("$name finishes all three priority rounds before the two sec
   expect(plan.slice(2, pair2).every((step) => step.block === 1)).toBe(true);
   expect(plan.slice(pair2).every((step) => step.block === 2)).toBe(true);
   expect(plan.at(-1)).toMatchObject({ kind: "exercise", round: 2, block: 2, side: "Right" });
-  expect(plan.filter((step) => step.kind === "exercise")).toHaveLength(workout.id === "a" ? 14 : 20);
+  expect(plan.filter((step) => step.kind === "exercise")).toHaveLength(15);
+});
+
+test("kettlebell mode supplies kettlebell reps, sides, and warm-up drills across both workouts", () => {
+  const workoutA = workouts[0];
+  const stepsA = buildSteps(workoutA, true);
+  expect(stepsA.filter((step) => step.exercise?.movement === "curl").map((step) => step.side)).toEqual([
+    "Left",
+    "Right",
+    "Left",
+    "Right",
+    "Left",
+    "Right",
+  ]);
+  expect(stepsA.filter((step) => step.exercise?.movement === "press").map((step) => step.side)).toEqual([
+    "Left",
+    "Right",
+    "Left",
+    "Right",
+  ]);
+  expect(
+    warmupFor(workoutA, true)
+      .slice(3)
+      .map((step) => step.movement),
+  ).toEqual(["crunch", "curl", "press", "plank"]);
+
+  const firstRound = buildSteps(workouts[1], true).slice(2, 6);
+  expect(firstRound.map((step) => [step.exercise?.movement, step.exercise?.reps, step.side])).toEqual([
+    ["goblet-lunge", "8–12 reps", "Left"],
+    ["goblet-lunge", "8–12 reps", "Right"],
+    ["row", "10–15 reps", "Left"],
+    ["row", "10–15 reps", "Right"],
+  ]);
 });
 
 test.each(workouts)("$name warms up for exactly three minutes and rehearses its own exercises", (workout) => {

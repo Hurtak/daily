@@ -1,7 +1,5 @@
 import { useCallback, useState } from "react";
 import Icon from "./Icon";
-import InfoDialog from "./InfoDialog";
-import ProfileFields from "./ProfileFields";
 import Home from "./Home";
 import Food from "./Food";
 import WorkoutPlayer from "./WorkoutPlayer";
@@ -9,30 +7,35 @@ import { workouts } from "./workouts";
 import {
   cycleWorkoutStatus,
   loadActiveView,
-  loadFoodChoices,
+  loadBreakfastEnabled,
+  loadFoodChoice,
+  loadKettlebellEnabled,
   loadProfile,
-  loadSwapScope,
+  loadRepPace,
   loadWorkoutLog,
   saveActiveView,
-  saveFoodChoices,
+  saveBreakfastEnabled,
+  saveFoodChoice,
+  saveKettlebellEnabled,
   saveProfile,
-  saveSwapScope,
+  saveRepPace,
   saveWorkoutLog,
   toDateKey,
 } from "./storage";
-import type { AppView, FoodChoices, SwapScope, UserProfile, WorkoutId, WorkoutLog } from "./storage";
+import type { AppView, RepPace, SkyrOptionId, UserProfile, WorkoutId, WorkoutLog } from "./storage";
 
 export default function App() {
   const [view, setView] = useState<AppView>(loadActiveView);
   const [focusMode, setFocusMode] = useState(false);
-  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [openedWorkouts, setOpenedWorkouts] = useState<Set<string>>(() =>
     view === "a" || view === "b" ? new Set([view]) : new Set(),
   );
   const [profile, setProfile] = useState<UserProfile>(loadProfile);
   const [workoutLog, setWorkoutLog] = useState<WorkoutLog>(loadWorkoutLog);
-  const [foodChoices, setFoodChoices] = useState<FoodChoices>(loadFoodChoices);
-  const [swapScope, setSwapScope] = useState<SwapScope>(loadSwapScope);
+  const [foodChoice, setFoodChoice] = useState<SkyrOptionId>(loadFoodChoice);
+  const [includeBreakfast, setIncludeBreakfast] = useState(loadBreakfastEnabled);
+  const [useKettlebell, setUseKettlebell] = useState(loadKettlebellEnabled);
+  const [repPace, setRepPace] = useState<RepPace>(loadRepPace);
 
   function navigate(next: AppView) {
     setFocusMode(false);
@@ -46,14 +49,24 @@ export default function App() {
     saveProfile(next);
   }, []);
 
-  const updateFoodChoices = useCallback((next: FoodChoices) => {
-    setFoodChoices(next);
-    saveFoodChoices(next);
+  const updateFoodChoice = useCallback((next: SkyrOptionId) => {
+    setFoodChoice(next);
+    saveFoodChoice(next);
   }, []);
 
-  const updateSwapScope = useCallback((next: SwapScope) => {
-    setSwapScope(next);
-    saveSwapScope(next);
+  const updateBreakfast = useCallback((enabled: boolean) => {
+    setIncludeBreakfast(enabled);
+    saveBreakfastEnabled(enabled);
+  }, []);
+
+  const updateKettlebell = useCallback((enabled: boolean) => {
+    setUseKettlebell(enabled);
+    saveKettlebellEnabled(enabled);
+  }, []);
+
+  const updateRepPace = useCallback((next: RepPace) => {
+    setRepPace(next);
+    saveRepPace(next);
   }, []);
 
   const toggleDay = useCallback((dateKey: string) => {
@@ -103,18 +116,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-
-        <button
-          type="button"
-          className="ed-profile-chip"
-          onClick={() => setShowSettingsDialog(true)}
-          aria-label="Open body settings"
-        >
-          <Icon name="settings" size={14} />
-          <span>
-            {profile.weightKg} kg · {profile.heightCm} cm · {profile.workoutsPerWeek}×/wk
-          </span>
-        </button>
       </header>
 
       <main>
@@ -123,6 +124,8 @@ export default function App() {
             onNavigate={navigate}
             profile={profile}
             onProfileChange={updateProfile}
+            includeBreakfast={includeBreakfast}
+            onBreakfastChange={updateBreakfast}
             workoutLog={workoutLog}
             onToggleDay={toggleDay}
           />
@@ -137,31 +140,23 @@ export default function App() {
               onBack={() => navigate("home")}
               onFocusChange={setFocusMode}
               onComplete={() => recordWorkout(workout.id)}
+              useKettlebell={useKettlebell}
+              onKettlebellChange={updateKettlebell}
+              repPace={repPace}
+              onRepPaceChange={updateRepPace}
             />
           ))}
         {view === "food" && (
           <Food
             profile={profile}
             onProfileChange={updateProfile}
-            foodChoices={foodChoices}
-            onFoodChoicesChange={updateFoodChoices}
-            swapScope={swapScope}
-            onSwapScopeChange={updateSwapScope}
+            foodChoice={foodChoice}
+            onFoodChoiceChange={updateFoodChoice}
+            includeBreakfast={includeBreakfast}
+            onBreakfastChange={updateBreakfast}
           />
         )}
       </main>
-
-      <footer className="site-footer">
-        <span className="footer-note">10 kg kettlebell</span>
-        <span className="footer-stats">Saved locally</span>
-      </footer>
-
-      {showSettingsDialog && (
-        <InfoDialog title="Settings" onClose={() => setShowSettingsDialog(false)}>
-          <p>Updates your weekly schedule, protein target, calories, and meal portions automatically.</p>
-          <ProfileFields profile={profile} onChange={updateProfile} />
-        </InfoDialog>
-      )}
     </div>
   );
 }

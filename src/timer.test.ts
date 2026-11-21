@@ -1,6 +1,15 @@
 import { expect, test } from "vite-plus/test";
-import { advanceTimer, formatTime, initialTimer, remainingSeconds, tickTimer } from "./timer";
+import {
+  advanceTimer,
+  currentRepFor,
+  formatTime,
+  initialTimer,
+  remainingSeconds,
+  syncStepPace,
+  tickTimer,
+} from "./timer";
 import { buildSteps, workouts } from "./workouts";
+import { loadRepPace, saveRepPace } from "./storage";
 import type { TimerState } from "./timer";
 
 const steps = buildSteps(workouts[0]);
@@ -10,7 +19,7 @@ const running: TimerState = {
   lastTick: 1000,
 };
 
-test.each(workouts)("$name preserves pairs, rounds, both sides, and rests", (workout) => {
+test.each(workouts)("$name preserves pairs, rounds, both sides, rep pacing, and rests", (workout) => {
   const plan = buildSteps(workout);
   expect(plan[0].seconds).toBe(5);
   expect(plan[1].seconds).toBe(180);
@@ -30,16 +39,62 @@ test.each(workouts)("$name preserves pairs, rounds, both sides, and rests", (wor
     }
   }
   expect(plan.at(-1)?.exercise).toBe(workout.exercises[3]);
-  expect(plan.filter((step) => step.kind === "exercise" && step.seconds)).toHaveLength(workout.id === "b" ? 6 : 0);
+  expect(plan.filter((step) => step.kind === "exercise" && step.reps === undefined)).toHaveLength(
+    workout.id === "a" ? 4 : 0,
+  );
+  for (const step of plan.filter((item) => item.kind === "exercise" && item.reps !== undefined)) {
+    expect(step.reps).toBeGreaterThan(0);
+    expect(step.repSeconds).toBeGreaterThan(0);
+    expect(step.seconds).toBeCloseTo(step.reps! * step.repSeconds!, 2);
+  }
 });
 
-test("delayed ticks cross timed phases and stop in a rep-based set", () => {
-  const after = tickTimer(running, steps, 191_000);
-  expect(after.index).toBe(2);
-  expect(after.elapsed).toBe(5);
-  expect(after.totalElapsed).toBe(190);
-  expect(after.status).toBe("running");
-  expect(tickTimer(after, steps, 500_000).index).toBe(2);
+test("delayed ticks cross timed phases and auto-proceed through rep-paced sets", () => {
+  const afterWarmup = tickTimer(running, steps, 191_000);
+  expect(afterWarmup.index).toBe(2);
+  expect(afterWarmup.elapsed).toBe(5);
+  expect(afterWarmup.totalElapsed).toBe(190);
+  expect(afterWarmup.status).toBe("running");
+  expect(currentRepFor(steps[2], afterWarmup.elapsed)).toBe(2);
+
+  // Reverse crunch is 15 reps * 3.5s = 52.5s; 48s more crosses into Self-resisted curl (Left).
+  const afterCrunch = tickTimer(afterWarmup, steps, 239_000);
+  expect(afterCrunch.index).toBe(3);
+  expect(steps[afterCrunch.index]).toMatchObject({ name: "Self-resisted curl", side: "Left" });
+  expect(afterCrunch.elapsed).toBeCloseTo(0.5, 4);
+});
+
+test("slow, normal, and fast paces scale rep duration and preserve fractional rep progress on switch", () => {
+  const slowPlan = buildSteps(workouts[0], false, "slow");
+  const normalPlan = buildSteps(workouts[0], false, "normal");
+  const fastPlan = buildSteps(workouts[0], false, "fast");
+  const slow = slowPlan[2];
+  const normal = normalPlan[2];
+  const fast = fastPlan[2];
+
+  expect(slow.reps).toBe(15);
+  expect(normal.reps).toBe(15);
+  expect(fast.reps).toBe(15);
+  expect(slow.repSeconds!).toBeGreaterThan(normal.repSeconds!);
+  expect(normal.repSeconds!).toBeGreaterThan(fast.repSeconds!);
+
+  const midRepFour: TimerState = {
+    ...running,
+    index: 2,
+    elapsed: normal.repSeconds! * 3.5,
+    stepRepSeconds: normal.repSeconds,
+  };
+  expect(currentRepFor(normal, midRepFour.elapsed)).toBe(4);
+  const rescaled = syncStepPace(midRepFour, fastPlan);
+  expect(currentRepFor(fast, rescaled.elapsed)).toBe(4);
+  expect(rescaled.elapsed / fast.repSeconds!).toBeCloseTo(3.5, 6);
+  expect(rescaled.stepRepSeconds).toBe(fast.repSeconds);
+
+  expect(loadRepPace()).toBe("normal");
+  saveRepPace("fast");
+  expect(loadRepPace()).toBe("fast");
+  window.localStorage.setItem("daily.repPace.v1", JSON.stringify("invalid"));
+  expect(loadRepPace()).toBe("normal");
 });
 
 test("pause and resume exclude the paused duration", () => {
@@ -55,13 +110,13 @@ test("completing a rep set resets its clock and preserves session time", () => {
   const inSet = { ...running, index: 2, elapsed: 20, totalElapsed: 205 };
   const next = advanceTimer(inSet, steps, 2000);
   expect(next.index).toBe(3);
-  expect(steps[next.index].name).toBe("Reverse crunches");
+  expect(steps[next.index]).toMatchObject({ name: "Self-resisted curl", side: "Left" });
   expect(next.elapsed).toBe(0);
   expect(next.totalElapsed).toBe(206);
 });
 
-test("side plank changes sides automatically and rests before the next curl round", () => {
-  const plan = buildSteps(workouts[1]);
+test("side plank changes sides automatically and rests before the next pike push-up round", () => {
+  const plan = buildSteps(workouts[0]);
   const state = { ...running, index: plan.findIndex((step) => step.exercise?.movement === "plank") };
   const right = tickTimer(state, plan, 32_000);
   expect(plan[right.index].side).toBe("Right");
@@ -70,8 +125,8 @@ test("side plank changes sides automatically and rests before the next curl roun
   expect(plan[rest.index].kind).toBe("rest");
   expect(rest.status).toBe("running");
   expect(rest.elapsed).toBe(2);
-  const curls = tickTimer(rest, plan, 121_000);
-  expect(plan[curls.index]).toMatchObject({ name: "Kettlebell biceps curl", round: 2, side: "Left" });
+  const next = tickTimer(rest, plan, 121_000);
+  expect(plan[next.index]).toMatchObject({ name: "Pike push-up", round: 2 });
 });
 
 test("manual completion works while paused and finishes without another rest", () => {

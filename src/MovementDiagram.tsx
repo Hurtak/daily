@@ -9,6 +9,7 @@ import {
   heading,
   motionPosesFor,
   movementDescriptions,
+  movementDurations,
   poseFor,
 } from "./movementPoses";
 import type { Limb, Phase, Point, Pose } from "./movementPoses";
@@ -75,20 +76,29 @@ function Kettlebell({ poses }: { poses: Pose[] }) {
 }
 function Figure({ poses }: { poses: Pose[] }) {
   const pose = poses[0];
+  const isOverhead = pose.support === "overhead-mat";
+  // Only dim the far limb in side-profile views where one side sits behind the torso.
+  const dimFarSide = !pose.front;
   const spine = limbMotion(
     poses.map(({ spine }) => spine),
     anatomy.upperBack,
   );
+  const waistRadius = pose.front ? 9 : 7.5;
+  const pelvisRadius = pose.front ? 8.5 : 7.5;
   return (
-    <g className="figure" strokeLinecap="round" strokeLinejoin="round">
+    <g
+      className={`figure ${pose.front ? "figure--front" : "figure--profile"}`}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       {pose.support === "bench" && (
         <g className="figure-bench">
           <path d="M61 145H99M66 145v44m28-44v44" />
           <path d="M58 144h44" className="bench-seat" />
         </g>
       )}
-      <Leg limbs={poses.map(({ legs }) => legs[0])} toes={poses.map(({ toes }) => toes[0])} far />
-      <Arm limbs={poses.map(({ arms }) => arms[0])} far />
+      <Leg limbs={poses.map(({ legs }) => legs[0])} toes={poses.map(({ toes }) => toes[0])} far={dimFarSide} />
+      <Arm limbs={poses.map(({ arms }) => arms[0])} far={dimFarSide} />
       <Leg limbs={poses.map(({ legs }) => legs[1])} toes={poses.map(({ toes }) => toes[1])} />
       <MovementMotion transforms={segmentMotion(poses.map(({ spine, head }) => [spine[0], head]))}>
         <path className="figure-neck" d={`M0 0H${anatomy.neckToHead}`} />
@@ -97,26 +107,42 @@ function Figure({ poses }: { poses: Pose[] }) {
         <path className="figure-shoulders" d={`M0 0H${distance(...pose.shoulders)}`} />
       </MovementMotion>
       <MovementMotion transforms={spine.upper}>
+        {!pose.front && <circle r={waistRadius} className="figure-waist" />}
         <path className="figure-shirt" d={`M0 0H${anatomy.upperBack}`} />
         <MovementMotion transforms={spine.lower}>
-          <circle r="10" className="figure-waist" />
-          <path className="figure-shirt" d={`M0 0H${anatomy.lowerBack}`} />
+          <circle r={waistRadius} className="figure-waist" />
           <path className="figure-shorts" d={`M0 0H${anatomy.lowerBack}`} />
+          <circle cx={anatomy.lowerBack} r={pelvisRadius} className="figure-pelvis" />
         </MovementMotion>
       </MovementMotion>
       <Arm limbs={poses.map(({ arms }) => arms[1])} />
       <MovementMotion transforms={poses.map(({ head, headAngle }) => ({ point: head, angle: headAngle }))}>
-        <g className="figure-head">
-          <circle r={anatomy.headRadius} />
-          {pose.front ? (
+        <g className="figure-head" transform={pose.headMirror ? "scale(-1 1)" : undefined}>
+          {isOverhead ? (
             <>
-              <path className="figure-hair" d="M-8-3q1-8 9-6l7 4" />
-              <path className="figure-face" d="M-3.5 0h.1m6.8 0h.1" />
+              <circle cx="-9" cy="0" r="2" className="figure-ear" />
+              <circle cx="9" cy="0" r="2" className="figure-ear" />
+              <circle r={anatomy.headRadius} className="figure-scalp" />
+            </>
+          ) : pose.front ? (
+            <>
+              <circle r={anatomy.headRadius} />
+              <path
+                className="figure-hair"
+                d="M-8.8-2.2C-9-8.8-4.2-10.6 0-10.6c4.2 0 9 1.8 8.8 8.4-1.8-2.3-5.2-3.2-8.8-3.2-3.6 0-7 .9-8.8 3.2Z"
+              />
+              <circle cx="-3.1" cy="-0.4" r="0.9" className="figure-eye" />
+              <circle cx="3.1" cy="-0.4" r="0.9" className="figure-eye" />
             </>
           ) : (
             <>
-              <path className="figure-hair" d="M-7-4q2-8 10-4l5 5" />
-              <path className="figure-nose" d="M-8-1l-3 3h3" />
+              <circle r={anatomy.headRadius} />
+              <path className="figure-nose" d="M-8.2-1.2l-2.5 2.7 2.5.7Z" />
+              <path
+                className="figure-hair"
+                d="M-6.8-5.4C-3.4-10.8 5.8-10.4 8.7-3.8c1.1 2.7.2 6.2-2.2 8.2-.4-2.8-1.4-6-3.9-7.5-2.8-1.6-6.2-1.2-9.4-2.3Z"
+              />
+              <circle cx="-4.2" cy="-1.2" r="0.9" className="figure-eye" />
             </>
           )}
         </g>
@@ -126,7 +152,7 @@ function Figure({ poses }: { poses: Pose[] }) {
           <Kettlebell poses={poses} />
           {[0, 1].map((index) => (
             <MovementMotion key={index} transforms={poses.map(({ arms }) => ({ point: arms[index][2], angle: 0 }))}>
-              <circle className={`figure-grip ${index === 0 ? "figure-far" : ""}`} r="2.8" />
+              <circle className={`figure-grip ${dimFarSide && index === 0 ? "figure-far" : ""}`} r="2.8" />
             </MovementMotion>
           ))}
         </>
@@ -141,12 +167,20 @@ export default memo(function MovementDiagram({
   className = "",
   side,
   phase,
+  closeup = false,
+  duration,
+  delay,
+  motionKey,
 }: {
   movement: Movement;
   playing?: boolean;
   className?: string;
   side?: "Left" | "Right";
   phase?: Phase;
+  closeup?: boolean;
+  duration?: number;
+  delay?: number;
+  motionKey?: string;
 }) {
   const descriptionId = useId();
   const arrowId = useId();
@@ -159,13 +193,18 @@ export default memo(function MovementDiagram({
           : motionPosesFor(movement),
     [movement, phase],
   );
+  const support = poses[0]?.support;
+  const resolvedDuration = duration ?? movementDurations[movement];
+  const style: Record<string, string> = {};
+  if (resolvedDuration > 0) style["--movement-duration"] = `${resolvedDuration}s`;
+  if (delay !== undefined && delay !== 0) style["--movement-delay"] = `${delay}s`;
   return (
     <svg
       className={`movement movement--${movement} ${className} ${playing ? "" : "is-still"}`}
-      style={{ "--movement-duration": movement === "march" ? "1.2s" : "4.8s" } as CSSProperties}
-      viewBox="0 0 260 210"
+      style={Object.keys(style).length ? (style as CSSProperties) : undefined}
+      viewBox={closeup && support === "mat" ? "18 82 224 120" : "0 0 260 210"}
       role="img"
-      aria-label={`${movement} movement illustration`}
+      aria-label={`${movement.replaceAll("-", " ")} movement illustration`}
       aria-describedby={descriptionId}
     >
       <desc id={descriptionId}>
@@ -185,12 +224,16 @@ export default memo(function MovementDiagram({
           <path d="m1 1 5 3-5 3" className="movement-arrowhead" />
         </marker>
       </defs>
-      <ellipse cx="130" cy="194" rx="86" ry="3" className="movement-shadow" />
-      <path d={`M24 ${ground}H236`} className="movement-ground" />
+      {support === "overhead-mat" ? (
+        <rect x="54" y="24" width="152" height="172" rx="8" className="movement-mat" />
+      ) : (
+        <>
+          <ellipse cx="130" cy="194" rx="86" ry="3" className="movement-shadow" />
+          <path d={`M24 ${ground}H236`} className="movement-ground" />
+        </>
+      )}
       <g className="movement-scene" transform={side === "Right" ? "translate(260 0) scale(-1 1)" : undefined}>
-        {["pushup", "plank", "crunch", "bridge"].includes(movement) && (
-          <rect x="28" y={ground} width="204" height="4" rx="2" className="movement-mat" />
-        )}
+        {support === "mat" && <rect x="28" y={ground} width="204" height="4" rx="2" className="movement-mat" />}
         {movement === "rest" ? (
           <g className="rest-drawing">
             <path d="M118 104v-8a12 12 0 0 1 24 0v8" />
@@ -198,13 +241,13 @@ export default memo(function MovementDiagram({
             <path d="M119 147q6-4 12 0t12 0m-25 10h24" className="bottle-water" />
           </g>
         ) : (
-          <Figure key={`${movement}-${side ?? ""}`} poses={poses} />
+          <Figure key={`${movement}-${side ?? ""}-${motionKey ?? ""}`} poses={poses} />
         )}
         {movement === "circles" && (
           <path d="M181 75a51 51 0 1 0-51 51" className="movement-cue" markerEnd={`url(#${arrowId})`} />
         )}
         {movement === "crunch" && (
-          <path d="M119 174q-7-17-19-17" className="movement-cue" markerEnd={`url(#${arrowId})`} />
+          <path d="M123 175q-6-18-20-21" className="movement-cue" markerEnd={`url(#${arrowId})`} />
         )}
       </g>
     </svg>
